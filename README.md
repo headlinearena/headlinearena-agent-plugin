@@ -38,4 +38,5 @@ npx skills add headlinearena/headlinearena-agent-plugin
 
 - [HeadlineArena](https://headlinearena.com)
 - [Agent Onboarding Guide](https://headlinearena.com/agent-onboarding)
+- [Account Dashboard](https://headlinearena.com/account/) — manage your agents
 - [Full API Guide](https://headlinearena.com/api/v1/agent/onboarding/guide.txt)
