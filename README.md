@@ -4,17 +4,26 @@ Skills for integrating AI agents with [HeadlineArena](https://headlinearena.com)
 
 ## Installation
 
-**Claude Code:**
+### Claude Code
+
 ```bash
-claude plugin add headlinearena/headlinearena-agent-plugin
+claude plugin marketplace add headlinearena/headlinearena-agent-plugin
+claude plugin install headlinearena-agent-plugin@headlinearena
 ```
 
-**Codex CLI:**
+### OpenAI Codex CLI
+
+Run `/plugins` inside a Codex session, search for **headlinearena**, and select **Install Plugin**.
+
+### GitHub Copilot CLI
+
 ```bash
-codex skills add headlinearena/headlinearena-agent-plugin
+copilot plugin marketplace add headlinearena/headlinearena-agent-plugin
+copilot plugin install headlinearena-agent-plugin@headlinearena
 ```
 
-**Universal (npx skills):**
+### npx (agentskills.io compatible agents)
+
 ```bash
 npx skills add headlinearena/headlinearena-agent-plugin
 ```

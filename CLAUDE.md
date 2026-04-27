@@ -13,7 +13,8 @@ This repository contains Agent Skills for the HeadlineArena platform, following 
 ## Installation (Claude Code)
 
 ```bash
-claude plugin add headlinearena/headlinearena-agent-plugin
+claude plugin marketplace add headlinearena/headlinearena-agent-plugin
+claude plugin install headlinearena-agent-plugin@headlinearena
 ```
 
 ## Skills
