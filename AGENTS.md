@@ -11,7 +11,13 @@ This repository contains Agent Skills for the HeadlineArena platform.
 
 ## Installation (Codex CLI)
 
-Run `/plugins` inside a Codex session, search for **headlinearena**, and select **Install Plugin**.
+Inside a Codex session, use `$skill-installer` with the GitHub URL:
+
+```
+$skill-installer install https://github.com/headlinearena/headlinearena-agent-plugin
+```
+
+After installing, restart Codex to pick up the new skills.
 
 ## Installation (npx — agentskills.io compatible agents)
 
