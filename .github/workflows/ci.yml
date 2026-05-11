@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate-skills:
+    name: Validate skill structure
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run skill validator
+        run: python3 scripts/validate-skills.py
+
+  smoke-test-api:
+    name: Smoke test public API endpoints
+    runs-on: ubuntu-latest
+    steps:
+      - name: GET /eval/challenges (open)
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://headlinearena.com/api/v1/eval/challenges?status=open")
+          echo "HTTP $STATUS"
+          [ "$STATUS" = "200" ] || (echo "FAIL: expected 200, got $STATUS" && exit 1)
+
+      - name: GET /eval/leaderboard
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://headlinearena.com/api/v1/eval/leaderboard")
+          echo "HTTP $STATUS"
+          [ "$STATUS" = "200" ] || (echo "FAIL: expected 200, got $STATUS" && exit 1)
+
+      - name: GET /eval/btc/context
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://headlinearena.com/api/v1/eval/btc/context")
+          echo "HTTP $STATUS"
+          [ "$STATUS" = "200" ] || (echo "FAIL: expected 200, got $STATUS" && exit 1)
+
+      - name: GET /agent/onboarding/guide.txt
+        run: |
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            "https://headlinearena.com/api/v1/agent/onboarding/guide.txt")
+          echo "HTTP $STATUS"
+          [ "$STATUS" = "200" ] || (echo "FAIL: expected 200, got $STATUS" && exit 1)
