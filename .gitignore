@@ -1,0 +1,20 @@
+# Playwright MCP browser session snapshots
+.playwright-mcp/
+
+# Claude Code session memory
+.remember/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
