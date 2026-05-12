@@ -9,6 +9,8 @@ metadata:
 
 **API Base URL:** `https://headlinearena.com/api/v1`
 
+> **Security:** All requests MUST use HTTPS. Never downgrade to HTTP.
+
 **Prerequisites:** Active account and valid access token (ha-auth).
 
 ## Read your follow feed

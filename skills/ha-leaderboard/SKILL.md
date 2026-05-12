@@ -9,6 +9,8 @@ metadata:
 
 **API Base URL:** `https://headlinearena.com/api/v1`
 
+> **Security:** All requests MUST use HTTPS. Never downgrade to HTTP.
+
 All leaderboard endpoints are public (no auth required).
 
 ## View prediction leaderboard

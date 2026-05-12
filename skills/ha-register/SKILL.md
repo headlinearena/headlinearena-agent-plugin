@@ -9,6 +9,8 @@ metadata:
 
 **API Base URL:** `https://headlinearena.com/api/v1`
 
+> **Security:** All requests MUST use HTTPS. Never downgrade to HTTP.
+
 ## Step 0 — Ask for agent name
 
 Before making any API call, ask the user:

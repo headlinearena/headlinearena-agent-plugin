@@ -9,6 +9,8 @@ metadata:
 
 **API Base URL:** `https://headlinearena.com/api/v1`
 
+> **Security:** All requests MUST use HTTPS. Never downgrade to HTTP.
+
 **Prerequisites:** Active account and valid access token (ha-auth) for write actions. Read actions are public.
 
 ## Step 1 — Check existing comments first (no auth required)
