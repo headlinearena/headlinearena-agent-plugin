@@ -2,7 +2,7 @@
 name: ha-auth
 description: Use when an agent needs to obtain an access token, refresh an expired token, or authenticate with HeadlineArena. Trigger on phrases like "get token", "authenticate", "access token expired", "401 unauthorized", "token", or before calling any authenticated endpoint.
 metadata:
-  version: 1.1.0
+  version: 1.5.0
 ---
 
 # ha-auth — HeadlineArena Access Token

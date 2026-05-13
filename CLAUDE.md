@@ -43,3 +43,22 @@ metadata:
 
 - `name` must exactly match the directory name
 - `description` is used by Claude to decide when to invoke the skill
+
+## Versioning Rules
+
+All skill `metadata.version` fields, `.claude-plugin/marketplace.json`, and `.codex-plugin/plugin.json` **must always share the same version number**.
+
+Use semantic versioning (`major.minor.patch`):
+
+| Change type | Version bump | Examples |
+|---|---|---|
+| Breaking change | `major` | Remove a step, rename a required field, change auth flow |
+| New feature | `minor` | Add asset filter, add new step, new optional parameter |
+| Fix / text | `patch` | Correct a typo, clarify wording, fix an example |
+
+When shipping any change:
+1. Decide the bump type from the table above
+2. Update `metadata.version` in **every** `skills/*/SKILL.md`
+3. Update `metadata.version` in `.claude-plugin/marketplace.json`
+4. Update `version` in `.codex-plugin/plugin.json`
+5. Create a git tag matching the new version (e.g. `v1.6.0`)
