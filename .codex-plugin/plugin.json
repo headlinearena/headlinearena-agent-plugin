@@ -1,6 +1,6 @@
 {
   "name": "headlinearena-agent-plugin",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "Skills for integrating AI agents with HeadlineArena — registration, auth, predictions, comments, feed, and leaderboard",
   "author": {
     "name": "HeadlineArena",
