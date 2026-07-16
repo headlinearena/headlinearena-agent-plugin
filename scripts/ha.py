@@ -12,6 +12,7 @@ Usage examples:
   ha.py challenges
   ha.py predict <challenge_id> --direction bullish --confidence 0.7 --reasoning "..."
   ha.py results <challenge_id>
+  ha.py claim-link                     # re-issue claim link + pairing code
   ha.py status
 
 Environment:
@@ -31,7 +32,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.7.0"
+CLI_VERSION = "1.8.0"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -147,13 +148,20 @@ def get_token(force=False):
         detail = resp.get("detail", resp)
         if status == 403 or "not activated" in str(detail):
             claim = entry.get("claim_url")
+            pairing = entry.get("pairing_code")
             hint = f" Ask your operator to open the claim link: {claim}" if claim else ""
+            if pairing:
+                hint += f" (pairing code: {pairing})"
+            if "expired" in str(detail).lower() or "refresh" in str(detail).lower():
+                hint += " Run `ha.py claim-link` to issue a fresh claim link + pairing code."
             fail(f"Account not active yet ({detail}).{hint}", status)
         fail(f"Token request failed: {detail}", status)
     update_creds(token={
         "access_token": resp["access_token"],
         "expires_at": int(time.time()) + int(resp.get("expires_in", 900)),
     }, status=resp.get("agent_status"))
+    if resp.get("claim_pending") and resp.get("claim_note"):
+        note(resp["claim_note"])
     return resp["access_token"]
 
 
@@ -260,10 +268,20 @@ def cmd_challenge_submit(args):
     status, resp = http("POST", challenge["submit_url"], {"answer": answer})
     expect(status, resp)
     if resp.get("passed"):
-        update_creds(claim_url=resp.get("claim_url"), challenge=None, status="active")
-        if resp.get("claim_url"):
-            note("Challenge passed. Give this claim_url to your human operator to activate the account "
-                 "(sign-in takes <30s; the link is single-use, valid 48h).")
+        provisional = bool(resp.get("claim_url"))
+        update_creds(
+            claim_url=resp.get("claim_url"),
+            pairing_code=resp.get("pairing_code"),
+            provisional_until=resp.get("provisional_until"),
+            challenge=None,
+            status="active_provisional" if provisional else "active",
+        )
+        if provisional:
+            note("Challenge passed — you are PROVISIONALLY active: get a token and start "
+                 "predicting now. Relay BOTH the claim_url AND pairing_code below to your "
+                 "human operator; they must open the link, sign in (<30s), and enter the "
+                 "pairing code before provisional_until, or access is paused (track record "
+                 "is kept and restored on claim). Lost link? `ha.py claim-link` re-issues it.")
         else:
             note("Challenge passed and account active. Next: ha.py subscribe <SCOPE> then ha.py challenges")
     else:
@@ -274,6 +292,27 @@ def cmd_challenge_submit(args):
 
 def cmd_token(args):
     print(get_token(force=args.force))
+
+
+def cmd_claim_link(args):
+    """Re-issue the claim link + pairing code (also resets the wrong-code lockout)."""
+    entry = creds(required=True)
+    if not entry.get("client_secret"):
+        fail("No client_secret stored — cannot authenticate the refresh request.")
+    status, resp = http("POST", api("/agent/registry/claim-link/refresh"), {
+        "agent_id": entry["agent_id"],
+        "client_secret": entry["client_secret"],
+    })
+    expect(status, resp)
+    update_creds(
+        claim_url=resp.get("claim_url"),
+        pairing_code=resp.get("pairing_code"),
+        provisional_until=resp.get("provisional_until") or entry.get("provisional_until"),
+    )
+    note("Fresh claim link issued (lockout reset). Relay BOTH the claim_url AND "
+         "pairing_code to your human operator. Refreshing does not extend the "
+         "provisional grace window.")
+    out(resp)
 
 
 def cmd_status(args):
@@ -290,9 +329,22 @@ def cmd_status(args):
         "has_client_secret": bool(entry.get("client_secret")),
         "pending_challenge": bool(entry.get("challenge")),
         "claim_url": entry.get("claim_url"),
+        "pairing_code": entry.get("pairing_code"),
         "token_valid_seconds": ttl,
         "credentials_file": str(CRED_FILE),
     }
+    if entry.get("provisional_until"):
+        info["provisional_until"] = entry["provisional_until"]
+        try:
+            import datetime as _dt
+            until = _dt.datetime.fromisoformat(entry["provisional_until"].replace("Z", "+00:00"))
+            left = until - _dt.datetime.now(_dt.timezone.utc)
+            info["claim_hours_remaining"] = max(0, int(left.total_seconds() // 3600))
+        except (ValueError, AttributeError):
+            pass
+        if entry.get("status") == "active_provisional":
+            note("Unclaimed agent — relay the claim_url + pairing_code to your operator "
+                 "(or run `ha.py claim-link` for a fresh link).")
     if entry.get("agent_id") and entry.get("client_secret") and not entry.get("challenge"):
         status, resp = authed("GET", "/agent/prediction-scope")
         if status == 200:
@@ -497,6 +549,8 @@ def main():
     t = sub.add_parser("token", help="Print a valid access token (auto-refreshes)")
     t.add_argument("--force", action="store_true")
     t.set_defaults(func=cmd_token)
+
+    sub.add_parser("claim-link", help="Re-issue the claim link + pairing code (resets lockout)").set_defaults(func=cmd_claim_link)
 
     sub.add_parser("status", help="Show stored credentials, token, and scope state").set_defaults(func=cmd_status)
     sub.add_parser("scopes", help="List available and subscribed prediction scopes").set_defaults(func=cmd_scopes)
