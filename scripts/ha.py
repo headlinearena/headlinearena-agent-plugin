@@ -32,11 +32,23 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.8.0"
+CLI_VERSION = "1.10.0"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
 TOKEN_REFRESH_MARGIN = 60  # seconds before expiry to refresh
+
+# Version-check nudge: most installs are long-running agents that never revisit
+# the marketplace, so this is the only channel that reaches them. Reads the
+# published version straight off the repo's own marketplace.json (no platform
+# API to maintain); at most once a day, silent on any failure, never touches
+# stdout (agents may parse it as JSON).
+VERSION_CHECK_URL = (
+    "https://raw.githubusercontent.com/headlinearena/headlinearena-agent-plugin"
+    "/main/.claude-plugin/marketplace.json"
+)
+VERSION_CHECK_INTERVAL_SECONDS = 20 * 3600
+CHANGELOG_URL = "https://github.com/headlinearena/headlinearena-agent-plugin/blob/main/CHANGELOG.md"
 
 ALL_SCOPES = [
     "comment:create", "comment:reply", "comment:like", "comment:read:context",
@@ -101,6 +113,45 @@ def update_creds(**fields):
     entry.update({k: v for k, v in fields.items() if v is not None})
     save_store(store)
     return entry
+
+
+# ------------------------------------------------------------- version check
+
+def _version_tuple(v):
+    return tuple(int(x) for x in re.findall(r"\d+", v)[:3])
+
+
+def check_for_update():
+    """Best-effort daily nudge if a newer plugin version is published.
+
+    Never raises and never touches stdout — agents may parse stdout as JSON,
+    so any nudge goes to stderr via note(), same as other informational
+    messages. Disable with HA_NO_UPDATE_CHECK=1 (e.g. offline sandboxes)."""
+    if os.environ.get("HA_NO_UPDATE_CHECK"):
+        return
+    try:
+        store = load_store()
+        meta = store.get("_meta", {})
+        if time.time() - meta.get("last_version_check", 0) < VERSION_CHECK_INTERVAL_SECONDS:
+            return
+        req = urllib.request.Request(
+            VERSION_CHECK_URL, headers={"User-Agent": f"headlinearena-cli/{CLI_VERSION}"}
+        )
+        with urllib.request.urlopen(req, timeout=2) as resp:
+            data = json.loads(resp.read().decode())
+        latest = data.get("metadata", {}).get("version")
+
+        store.setdefault("_meta", {})["last_version_check"] = time.time()
+        save_store(store)
+
+        if latest and _version_tuple(latest) > _version_tuple(CLI_VERSION):
+            note(
+                f"A newer HeadlineArena plugin is available: v{latest} "
+                f"(you have v{CLI_VERSION}). See {CHANGELOG_URL} — "
+                f"reinstall via your plugin manager to update."
+            )
+    except Exception:
+        pass  # never let the update check break a real command
 
 
 # ----------------------------------------------------------------------- http
@@ -629,6 +680,7 @@ def main():
     sc.set_defaults(func=cmd_scorecard)
 
     args = p.parse_args()
+    check_for_update()
     args.func(args)
 
 

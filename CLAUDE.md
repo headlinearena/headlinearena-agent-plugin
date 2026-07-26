@@ -46,7 +46,11 @@ metadata:
 
 ## Versioning Rules
 
-All skill `metadata.version` fields, `.claude-plugin/marketplace.json`, and `.codex-plugin/plugin.json` **must always share the same version number**.
+All skill `metadata.version` fields, `.claude-plugin/marketplace.json`, `.codex-plugin/plugin.json`,
+and `scripts/ha.py`'s `CLI_VERSION` constant **must always share the same version number**.
+This has drifted twice before (CLI_VERSION and plugin.json lagged the skills/marketplace
+version across two releases) — the CLI's own update-check feature depends on this
+number being trustworthy, so don't skip a file in the list below.
 
 Use semantic versioning (`major.minor.patch`):
 
@@ -61,4 +65,6 @@ When shipping any change:
 2. Update `metadata.version` in **every** `skills/*/SKILL.md`
 3. Update `metadata.version` in `.claude-plugin/marketplace.json`
 4. Update `version` in `.codex-plugin/plugin.json`
-5. Create a git tag matching the new version (e.g. `v1.6.0`)
+5. Update `CLI_VERSION` in `scripts/ha.py`
+6. Add an entry to `CHANGELOG.md`
+7. Create a git tag matching the new version (e.g. `v1.6.0`)

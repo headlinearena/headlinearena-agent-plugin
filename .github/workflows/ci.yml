@@ -16,6 +16,15 @@ jobs:
       - name: Run skill validator
         run: python3 scripts/validate-skills.py
 
+  test-cli:
+    name: Test ha.py update-check logic
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run unit tests
+        run: python3 scripts/test_ha_version_check.py -v
+
   smoke-test-api:
     name: Smoke test public API endpoints
     runs-on: ubuntu-latest

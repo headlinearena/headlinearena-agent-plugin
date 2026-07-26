@@ -1,0 +1,117 @@
+#!/usr/bin/env python3
+"""Unit tests for ha.py's update-check nudge (scripts/ha.py: check_for_update).
+
+Stdlib-only (unittest + unittest.mock), consistent with the plugin's
+zero-dependency philosophy. Run: python3 scripts/test_ha_version_check.py
+"""
+import contextlib
+import copy
+import io
+import json
+import os
+import sys
+import unittest
+from unittest import mock
+
+sys.path.insert(0, os.path.dirname(__file__))
+import ha  # noqa: E402
+
+
+class FakeResponse:
+    def __init__(self, payload):
+        self._payload = json.dumps(payload).encode()
+
+    def read(self):
+        return self._payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class FakeDisk:
+    """Mimics ha.py's file-backed store: load_store()/save_store() must
+    round-trip through something that isn't the same mutable object, or a
+    setdefault-then-save sequence silently loses data (a real footgun this
+    test exists to catch)."""
+
+    def __init__(self):
+        self._data = {}
+
+    def load(self):
+        return copy.deepcopy(self._data)
+
+    def save(self, store):
+        self._data = copy.deepcopy(store)
+
+
+class CheckForUpdateTests(unittest.TestCase):
+    def setUp(self):
+        self.disk = FakeDisk()
+        self._patches = [
+            mock.patch.object(ha, "load_store", self.disk.load),
+            mock.patch.object(ha, "save_store", self.disk.save),
+        ]
+        for p in self._patches:
+            p.start()
+        self.addCleanup(lambda: [p.stop() for p in self._patches])
+        os.environ.pop("HA_NO_UPDATE_CHECK", None)
+
+    def _run_capturing_stderr(self):
+        buf = io.StringIO()
+        with contextlib.redirect_stderr(buf):
+            ha.check_for_update()
+        return buf.getvalue()
+
+    def test_nudges_when_remote_is_newer(self):
+        with mock.patch("urllib.request.urlopen",
+                         return_value=FakeResponse({"metadata": {"version": "9.9.9"}})):
+            output = self._run_capturing_stderr()
+        self.assertIn("9.9.9", output)
+        self.assertIn(ha.CLI_VERSION, output)
+        self.assertIn(ha.CHANGELOG_URL, output)
+
+    def test_records_check_timestamp(self):
+        with mock.patch("urllib.request.urlopen",
+                         return_value=FakeResponse({"metadata": {"version": "9.9.9"}})):
+            self._run_capturing_stderr()
+        self.assertGreater(self.disk.load()["_meta"]["last_version_check"], 0)
+
+    def test_skips_network_within_cache_window(self):
+        with mock.patch("urllib.request.urlopen",
+                         return_value=FakeResponse({"metadata": {"version": "9.9.9"}})):
+            self._run_capturing_stderr()
+        with mock.patch("urllib.request.urlopen") as mocked:
+            ha.check_for_update()
+            mocked.assert_not_called()
+
+    def test_no_nudge_when_already_current(self):
+        with mock.patch("urllib.request.urlopen",
+                         return_value=FakeResponse({"metadata": {"version": ha.CLI_VERSION}})):
+            output = self._run_capturing_stderr()
+        self.assertEqual(output, "")
+
+    def test_disabled_via_env_var_skips_network_entirely(self):
+        os.environ["HA_NO_UPDATE_CHECK"] = "1"
+        try:
+            with mock.patch("urllib.request.urlopen") as mocked:
+                ha.check_for_update()
+                mocked.assert_not_called()
+        finally:
+            del os.environ["HA_NO_UPDATE_CHECK"]
+
+    def test_network_failure_is_silent_and_never_raises(self):
+        with mock.patch("urllib.request.urlopen", side_effect=OSError("boom")):
+            output = self._run_capturing_stderr()  # must not raise
+        self.assertEqual(output, "")
+
+    def test_malformed_response_is_silent_and_never_raises(self):
+        with mock.patch("urllib.request.urlopen", return_value=FakeResponse({"unexpected": "shape"})):
+            output = self._run_capturing_stderr()  # .get() chain -> None, no crash
+        self.assertEqual(output, "")
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -8,6 +8,8 @@ import sys
 
 SKILLS_DIR = "skills"
 MARKETPLACE_FILE = ".claude-plugin/marketplace.json"
+PLUGIN_MANIFEST_FILE = ".codex-plugin/plugin.json"
+CLI_FILE = "scripts/ha.py"
 REQUIRED_FRONTMATTER = ["name", "description"]
 REQUIRED_METADATA = ["version"]
 
@@ -97,6 +99,8 @@ def validate_skill(skill_name):
     if not re.search(r"^## ", content, re.MULTILINE):
         warn(f"{skill_name}: no ## section headings found in SKILL.md")
 
+    return version
+
 
 def validate_marketplace():
     if not os.path.isfile(MARKETPLACE_FILE):
@@ -118,6 +122,54 @@ def validate_marketplace():
     return listed
 
 
+def read_plugin_manifest_version():
+    if not os.path.isfile(PLUGIN_MANIFEST_FILE):
+        err(f"plugin manifest not found: {PLUGIN_MANIFEST_FILE}")
+        return None
+    try:
+        return json.load(open(PLUGIN_MANIFEST_FILE)).get("version")
+    except json.JSONDecodeError as e:
+        err(f"{PLUGIN_MANIFEST_FILE} is invalid JSON: {e}")
+        return None
+
+
+def read_marketplace_version():
+    if not os.path.isfile(MARKETPLACE_FILE):
+        return None
+    try:
+        return json.load(open(MARKETPLACE_FILE)).get("metadata", {}).get("version")
+    except json.JSONDecodeError:
+        return None  # already reported by validate_marketplace()
+
+
+def read_cli_version():
+    if not os.path.isfile(CLI_FILE):
+        err(f"CLI file not found: {CLI_FILE}")
+        return None
+    m = re.search(r'^CLI_VERSION\s*=\s*"([^"]+)"', open(CLI_FILE).read(), re.MULTILINE)
+    if not m:
+        err(f"{CLI_FILE}: could not find a CLI_VERSION = \"x.y.z\" line")
+        return None
+    return m.group(1)
+
+
+def validate_versions_match(skill_versions):
+    """The versioning rule in CLAUDE.md: every skill, marketplace.json,
+    plugin.json, and ha.py's CLI_VERSION must share one version number. This
+    has drifted twice before (silently, with no CI check) — enforce it."""
+    sources = dict(skill_versions)
+    sources[MARKETPLACE_FILE] = read_marketplace_version()
+    sources[PLUGIN_MANIFEST_FILE] = read_plugin_manifest_version()
+    sources[CLI_FILE] = read_cli_version()
+
+    versions = {v for v in sources.values() if v}
+    if len(versions) > 1:
+        err(
+            "version mismatch across the repo (CLAUDE.md requires these to match): "
+            + ", ".join(f"{name}={version}" for name, version in sorted(sources.items()))
+        )
+
+
 def main():
     os.chdir(os.path.join(os.path.dirname(__file__), ".."))
 
@@ -136,8 +188,8 @@ def main():
 
     print(f"Validating {len(skill_dirs)} skills: {', '.join(skill_dirs)}\n")
 
-    for skill in skill_dirs:
-        validate_skill(skill)
+    skill_versions = {skill: validate_skill(skill) for skill in skill_dirs}
+    validate_versions_match(skill_versions)
 
     marketplace_skills = validate_marketplace()
     for skill in skill_dirs:
