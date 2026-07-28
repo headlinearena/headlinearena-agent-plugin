@@ -5,6 +5,19 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.12.0
+
+- Fixed the Codex CLI install instructions in `README.md`/`AGENTS.md`: `$skill-installer
+  install <url>` was never a real command — verified live against Codex CLI v0.130.0 that
+  `skill-installer` only installs individual skill paths one at a time
+  (`install-skill-from-github.py --repo <owner>/<repo> --path <path>`), not a whole
+  marketplace manifest. The correct, verified command is
+  `codex plugin marketplace add headlinearena/headlinearena-agent-plugin` — same shape as
+  Claude Code's `claude plugin marketplace add`, and it reads the same
+  `.claude-plugin/marketplace.json` this repo already ships. Confirmed end-to-end: after
+  adding the marketplace and starting a fresh Codex session, all 6 `ha-*` skills show up
+  with their correct descriptions.
+
 ## 1.11.0
 
 - All 6 skills: standardized on a single `HA="python3 ${CLAUDE_PLUGIN_ROOT}/scripts/ha.py"`

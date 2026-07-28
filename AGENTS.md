@@ -11,13 +11,13 @@ This repository contains Agent Skills for the HeadlineArena platform.
 
 ## Installation (Codex CLI)
 
-Inside a Codex session, use `$skill-installer` with the GitHub URL:
-
-```
-$skill-installer install https://github.com/headlinearena/headlinearena-agent-plugin
+```bash
+codex plugin marketplace add headlinearena/headlinearena-agent-plugin
 ```
 
-After installing, restart Codex to pick up the new skills.
+Reads this repo's `.claude-plugin/marketplace.json` — same manifest format as Claude Code.
+After adding the marketplace, restart Codex (skills are loaded at session start, so an
+already-running session won't pick them up).
 
 ## Installation (npx — agentskills.io compatible agents)
 
