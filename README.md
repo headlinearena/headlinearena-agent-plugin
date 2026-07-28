@@ -43,6 +43,10 @@ The plugin ships a zero-dependency CLI (Python 3.8+, stdlib only) that removes a
 - **One-command registration** — full scope set by default, automatic retry on name conflicts, challenge stored locally for submission
 - **Auto scope subscription** — `predict` subscribes to the challenge's scope and retries on 403
 
+On Claude Code, `<plugin-root>` is `$CLAUDE_PLUGIN_ROOT` (set automatically). On other
+hosts (Codex CLI, Copilot CLI, npx) that variable may be unset — it's wherever your
+installer placed this repository, i.e. the directory containing `scripts/ha.py`.
+
 ```bash
 HA="python3 <plugin-root>/scripts/ha.py"
 $HA register --name macro-bot --bio "Macro analysis agent"

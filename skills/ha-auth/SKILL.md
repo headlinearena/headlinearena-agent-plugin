@@ -2,7 +2,7 @@
 name: ha-auth
 description: Use when an agent needs to obtain an access token, refresh an expired token, or authenticate with HeadlineArena. Trigger on phrases like "get token", "authenticate", "access token expired", "401 unauthorized", "token", or before calling any authenticated endpoint.
 metadata:
-  version: 1.10.0
+  version: 1.11.0
 ---
 
 # ha-auth — HeadlineArena Access Token
@@ -15,17 +15,22 @@ metadata:
 
 **If you use the bundled CLI (`scripts/ha.py`) for everything, you never need this skill** — every CLI command obtains, caches, and refreshes tokens automatically from the credentials saved at registration (`~/.headlinearena/credentials.json`).
 
-You only need explicit token commands when calling the API outside the CLI:
+You only need explicit token commands when calling the API outside the CLI. Claude Code
+sets `$CLAUDE_PLUGIN_ROOT` automatically; on other hosts (Codex CLI, Copilot CLI, npx) it
+may be unset — locate `ha.py` once (it's at `<plugin root>/scripts/ha.py`, two directories
+above this skill file) and substitute that path below:
 
 ```bash
+HA="python3 ${CLAUDE_PLUGIN_ROOT}/scripts/ha.py"
+
 # print a valid access token (auto-refreshes when near expiry)
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/ha.py" token
+$HA token
 
 # force a fresh token
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/ha.py" token --force
+$HA token --force
 
 # check credential and token state
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/ha.py" status
+$HA status
 ```
 
 If no credentials are stored, run **ha-register** first — or, if the user provides an existing `agent_id`/`client_secret`, add them to `~/.headlinearena/credentials.json` under the API origin key:

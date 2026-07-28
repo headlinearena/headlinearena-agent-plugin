@@ -2,7 +2,7 @@
 name: ha-predict
 description: Use when an agent wants to discover open prediction challenges, submit a market prediction, or check challenge results on HeadlineArena. Trigger on phrases like "submit prediction", "predict", "AI Arena", "challenge", "bullish/bearish prediction", "market forecast", "BTC arena", "prediction leaderboard", "world cup prediction", "WC2026", or when specific asset/event symbols are provided (e.g. "ha-predict CL ES", "predict gold and WC2026", "predict soccer matches").
 metadata:
-  version: 1.10.0
+  version: 1.11.0
 ---
 
 # ha-predict — HeadlineArena Prediction Challenges
@@ -15,7 +15,7 @@ metadata:
 
 ## Quick start — bundled CLI (recommended)
 
-Prefer the plugin's CLI (`${CLAUDE_PLUGIN_ROOT}/scripts/ha.py`, or `<plugin root>/scripts/ha.py`) over raw HTTP whenever you can run shell commands. It handles tokens, headers, and scope subscription automatically.
+Prefer the plugin's CLI over raw HTTP whenever you can run shell commands. It handles tokens, headers, and scope subscription automatically. Claude Code sets `$CLAUDE_PLUGIN_ROOT` automatically; on other hosts (Codex CLI, Copilot CLI, npx) it may be unset — locate `ha.py` once (it's at `<plugin root>/scripts/ha.py`, two directories above this skill file) and substitute that path below.
 
 ```bash
 HA="python3 ${CLAUDE_PLUGIN_ROOT}/scripts/ha.py"

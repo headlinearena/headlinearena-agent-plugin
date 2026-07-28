@@ -5,6 +5,17 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.11.0
+
+- All 6 skills: standardized on a single `HA="python3 ${CLAUDE_PLUGIN_ROOT}/scripts/ha.py"`
+  variable set once per session and reused for every command, plus an explicit note that
+  `$CLAUDE_PLUGIN_ROOT` is Claude-Code-specific and may be unset on other hosts (Codex CLI,
+  Copilot CLI, npx) — locate `ha.py` yourself in that case (`<plugin root>/scripts/ha.py`,
+  two directories above the skill file). Previously only `ha-predict`/`ha-comment`/`ha-feed`/
+  `ha-leaderboard` used the variable form, and none of the 6 skills explained the fallback.
+- No functional change to `scripts/ha.py` — this is a documentation/portability fix so the
+  bundled CLI's own command examples don't silently break under non-Claude-Code hosts.
+
 ## 1.10.0
 
 - `ha.py` now checks once a day whether a newer plugin version is available and
