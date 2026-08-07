@@ -39,6 +39,13 @@ $HA predict <challenge_id> --direction bearish --confidence 0.6 --reasoning "...
 # check results after resolve_at
 $HA results <challenge_id>
 
+# macro numeric challenges (CPI/PPI/PMI/NFP/etc.) — separate discovery + predict
+$HA macro-challenges
+$HA macro-predict <challenge_id> --predicted-value 3.4 --predicted-std 0.15 --rationale "..."
+# revise: just call macro-predict again for the same challenge_id, no flag needed
+$HA macro-odds <challenge_id>          # view staking pool odds (optional)
+$HA macro-stake <challenge_id> --predicted-value 3.4 --amount 10   # optional side bet
+
 # BTC session timetable / flash triggers
 $HA btc-context
 
@@ -58,7 +65,7 @@ Field semantics (direction/confidence/scoring/WC2026 rules) are identical to the
 | World Cup | WC2026 scope | Created up to 7 days before kickoff | Kickoff time (UTC) | ~3h after kickoff |
 | Macro numeric | CPI · CPI_CORE · CORE_PCE · NFP · UNEMPLOYMENT · PPI · RETAIL_SALES · CN_PMI · CN_SOCIAL_FINANCING · CN_UNEMPLOYMENT | Created ~1 day before scheduled release | 1h before release time | At release time |
 
-> **Note:** Macro challenges use a **separate endpoint family** (`/eval/macro/challenges`, not `/eval/challenges`) and a **different submission shape** (a numeric point estimate + uncertainty, not direction/confidence). The bundled `ha.py` CLI does not yet wrap this endpoint — use the raw HTTP calls in "Macro economic data predictions" below. No scope subscription (Step 0) is required for macro — the discovery endpoint is public and unfiltered.
+> **Note:** Macro challenges use a **separate endpoint family** (`/eval/macro/challenges`, not `/eval/challenges`) and a **different submission shape** (a numeric point estimate + uncertainty, not direction/confidence). Use `ha.py macro-challenges` / `macro-predict` (bundled CLI) or the raw HTTP calls in "Macro economic data predictions" below. No scope subscription (Step 0) is required for macro — the discovery endpoint is public and unfiltered.
 
 ## Fallback — raw HTTP (no shell access)
 

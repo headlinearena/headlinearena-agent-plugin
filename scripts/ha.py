@@ -32,7 +32,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.13.0"
+CLI_VERSION = "1.14.0"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -487,6 +487,44 @@ def cmd_predict(args):
     out(resp)
 
 
+def cmd_macro_challenges(args):
+    """Macro challenges (CPI/PPI/PMI/NFP/etc.) live under a separate endpoint
+    family and are never returned by `challenges`/`eval/challenges/active` —
+    poll this on its own cycle alongside financial/BTC/World Cup."""
+    status, resp = http("GET", api("/eval/macro/challenges"))
+    expect(status, resp)
+    out(resp)
+
+
+def cmd_macro_predict(args):
+    """Submit or revise a macro numeric prediction. No `--revision` flag
+    needed (unlike financial `predict`) — POSTing again for the same
+    challenge_id just updates the existing prediction in place."""
+    if args.predicted_std <= 0:
+        fail("predicted-std must be > 0")
+    body = {"predicted_value": args.predicted_value, "predicted_std": args.predicted_std}
+    if args.rationale:
+        body["rationale"] = args.rationale
+    status, resp = authed("POST", f"/eval/macro/challenges/{args.challenge_id}/predict", body)
+    expect(status, resp)
+    out(resp)
+
+
+def cmd_macro_stake(args):
+    """Optional pari-mutuel side bet on a value bin — separate from scoring,
+    requires the `credits:stake` scope (not granted by default)."""
+    body = {"predicted_value": args.predicted_value, "amount": args.amount}
+    status, resp = authed("POST", f"/eval/macro/challenges/{args.challenge_id}/stake", body)
+    expect(status, resp)
+    out(resp)
+
+
+def cmd_macro_odds(args):
+    status, resp = http("GET", api(f"/eval/macro/challenges/{args.challenge_id}/odds"))
+    expect(status, resp)
+    out(resp)
+
+
 def cmd_results(args):
     status, resp = http("GET", api(f"/eval/challenges/{args.challenge_id}/results"))
     expect(status, resp)
@@ -628,6 +666,26 @@ def main():
     pr.add_argument("--summary", default=None)
     pr.add_argument("--revision", action="store_true", help="revise an existing prediction")
     pr.set_defaults(func=cmd_predict)
+
+    mc = sub.add_parser("macro-challenges", help="List open macro numeric challenges (CPI/PPI/PMI/etc., public)")
+    mc.set_defaults(func=cmd_macro_challenges)
+
+    mp = sub.add_parser("macro-predict", help="Submit/revise a macro numeric prediction")
+    mp.add_argument("challenge_id")
+    mp.add_argument("--predicted-value", required=True, type=float, dest="predicted_value")
+    mp.add_argument("--predicted-std", required=True, type=float, dest="predicted_std")
+    mp.add_argument("--rationale", default=None)
+    mp.set_defaults(func=cmd_macro_predict)
+
+    ms = sub.add_parser("macro-stake", help="Stake credits on a macro value bin (needs credits:stake scope)")
+    ms.add_argument("challenge_id")
+    ms.add_argument("--predicted-value", required=True, type=float, dest="predicted_value")
+    ms.add_argument("--amount", required=True, type=float)
+    ms.set_defaults(func=cmd_macro_stake)
+
+    mo = sub.add_parser("macro-odds", help="View current staking pool odds for a macro challenge")
+    mo.add_argument("challenge_id")
+    mo.set_defaults(func=cmd_macro_odds)
 
     res = sub.add_parser("results", help="Check challenge results")
     res.add_argument("challenge_id")
