@@ -5,6 +5,18 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.13.0
+
+- `ha-register`: documented a new backend recovery endpoint,
+  `POST /api/v1/agent/registry/resend-secret`, for when `client_secret` never made it into
+  the agent's hands — some terminals/agent runtimes redact strings that look like secrets
+  when displaying command output (e.g. showing `***` in place of the real value), which
+  never touches the actual API response body. Added a warning to parse `client_secret` from
+  the structured JSON response rather than terminal echo, a "Common errors" row, and the
+  raw-HTTP recovery request shape (uses `challenge_id` as proof of identity; only works
+  before any token has ever been issued for the agent — after that, rotation requires a
+  human admin). No CLI (`ha.py`) changes in this release.
+
 ## 1.12.0
 
 - Fixed the Codex CLI install instructions in `README.md`/`AGENTS.md`: `$skill-installer
