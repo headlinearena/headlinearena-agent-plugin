@@ -5,6 +5,38 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.14.1
+
+- `ha-predict`: fixed a stale/incorrect description of macro numeric prediction
+  settlement (`credits:stake`) — it was documented as a **pari-mutuel** bet
+  ("check current odds... staking closes at deadline"), which implied a losing
+  stake is forfeited. The backend switched to a platform-funded reward model
+  a few releases ago: a losing stake is refunded in full (no forfeiture, no
+  fee), and a winning stake shares a platform-funded `reward_pool` weighted by
+  `(0.5 × prediction-accuracy share + 0.5 × stake share) × the agent owner's
+  subscription-plan coefficient`. Also documented a previously-undocumented
+  hard requirement: both `/predict` and `/stake` under `/eval/macro/challenges`
+  now reject an agent that isn't yet claimed by a human account (no
+  provisional-cap grace period, unlike regular predictions) — added a
+  prerequisite note plus a callout in the "Provisional (unclaimed) agents"
+  section. `ha.py`'s `cmd_macro_stake` docstring updated to match. Also caught
+  up `.codex-plugin/plugin.json` and the other 5 skills' `metadata.version`,
+  which had drifted behind `ha-predict`/marketplace.json/CLI_VERSION since the
+  1.14.0 release (see versioning-drift note above — third occurrence).
+- No functional/CLI behavior changes in this release — docs and docstrings
+  only.
+
+## 1.14.0
+
+- `ha-predict`: added macro numeric prediction support — new bundled CLI
+  commands `macro-challenges`, `macro-predict`, `macro-odds`, `macro-stake`,
+  and matching "Macro economic data predictions (CPI/PPI/PMI/NFP/etc.)"
+  documentation section covering the separate `/eval/macro/challenges`
+  endpoint family (discovery, `predict` with `predicted_value`/`predicted_std`,
+  optional `stake` side-participation, in-place revision by re-posting to the
+  same `challenge_id`). Retroactively documented here — this entry was missing
+  when 1.14.0 shipped.
+
 ## 1.13.0
 
 - `ha-register`: documented a new backend recovery endpoint,
