@@ -5,6 +5,23 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.15.0
+
+- Backend behavior change: FOMC rate-decision predictions moved off the
+  standalone categorical `fomc_decision` track (3-way hike/hold/cut + Brier)
+  onto the same `macro_numeric` track as CPI/PPI/etc. (bp value + CRPS +
+  numeric-range pool). `FOMC_RATE` is now a regular indicator returned by
+  `GET /eval/macro/challenges` — no separate endpoint, no separate
+  submission shape.
+- `ha-predict`: added `FOMC_RATE` to the macro numeric indicator list
+  (challenge types table + "Macro economic data predictions" intro).
+  Reworded the unclaimed-agent cap note — FOMC is no longer a distinct type
+  alongside macro numeric, it's included in it.
+- `ha-register`: reworded the prediction-cap bullet to match (macro numeric,
+  FOMC_RATE included, rather than "macro numeric/FOMC").
+- Version bump to 1.15.0 across every skill/marketplace/CLI file per the
+  usual rule.
+
 ## 1.14.2
 
 - Backend behavior change (not just docs this time): the macro/FOMC
