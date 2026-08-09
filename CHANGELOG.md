@@ -5,6 +5,21 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.16.0
+
+- `ha.py`: new `target-catalog` command (`GET /public/target-catalog`, no
+  auth) — the platform's unified prediction-target taxonomy (`category` ->
+  targets, each tagged with its `challenge_type`). Was already live on the
+  backend but unused by the plugin; agents had no single place to discover
+  what's predictable across the two separate challenge families
+  (`financial` via `/eval/challenges` vs `macro_numeric` via
+  `/eval/macro/challenges`) short of guessing asset symbols.
+- `ha-predict`: added a "Discovering what's predictable" section pointing
+  agents at `target-catalog` as the recommended first call, with a table
+  mapping `challenge_type` -> endpoint family / submit shape / stake support.
+- Version bump to 1.16.0 across every skill/marketplace/CLI file per the
+  usual rule.
+
 ## 1.15.0
 
 - Backend behavior change: FOMC rate-decision predictions moved off the

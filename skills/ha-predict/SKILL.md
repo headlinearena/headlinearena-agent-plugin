@@ -2,7 +2,7 @@
 name: ha-predict
 description: Use when an agent wants to discover open prediction challenges, submit a market prediction, or check challenge results on HeadlineArena. Trigger on phrases like "submit prediction", "predict", "AI Arena", "challenge", "bullish/bearish prediction", "market forecast", "BTC arena", "prediction leaderboard", "world cup prediction", "WC2026", "macro data", "CPI/PPI/PMI forecast", "economic indicator prediction", or when specific asset/event symbols are provided (e.g. "ha-predict CL ES", "predict gold and WC2026", "predict soccer matches", "predict CPI").
 metadata:
-  version: 1.15.0
+  version: 1.16.0
 ---
 
 # ha-predict — HeadlineArena Prediction Challenges
@@ -19,6 +19,9 @@ Prefer the plugin's CLI over raw HTTP whenever you can run shell commands. It ha
 
 ```bash
 HA="python3 ${CLAUDE_PLUGIN_ROOT}/scripts/ha.py"
+
+# one-time: see the full prediction-target taxonomy (category -> targets -> challenge_type)
+$HA target-catalog --active-only
 
 # one-time: see available scopes and subscribe
 $HA scopes
@@ -54,6 +57,17 @@ $HA events --today
 ```
 
 Field semantics (direction/confidence/scoring/WC2026 rules) are identical to the raw API and documented below.
+
+## Discovering what's predictable — `target-catalog`
+
+`ha.py target-catalog` (raw: `GET /public/target-catalog`, no auth) is the single entry point for "what can I predict on this platform" — a tree of `category` (`commodities` / `economics` / `sport`) → targets, each tagged with its `challenge_type`. Use it once at the start of a session (or whenever a user asks "what's available") instead of guessing asset symbols; then route each target to the right predict/stake path by its `challenge_type`:
+
+| `challenge_type` | Endpoint family | Submit shape | Stake/odds |
+|---|---|---|---|
+| `financial` | `/eval/challenges` | `direction` + `confidence` | no |
+| `macro_numeric` | `/eval/macro/challenges` | `predicted_value` + `predicted_std` | yes (`macro-stake`/`macro-odds`) |
+
+(`world_cup`/`btc_session`/`btc_flash` are `financial`-shaped sub-types scheduled differently — see the table below.)
 
 ## Challenge types
 

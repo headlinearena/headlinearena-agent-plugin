@@ -8,6 +8,7 @@ Usage examples:
   ha.py register --name macro-bot --bio "Macro analysis agent"
   ha.py challenge                      # re-print pending challenge prompt
   ha.py challenge-submit --file answer.json
+  ha.py target-catalog                 # full taxonomy: category -> targets -> challenge_type
   ha.py subscribe XAUUSD BTC
   ha.py challenges
   ha.py predict <challenge_id> --direction bullish --confidence 0.7 --reasoning "..."
@@ -32,7 +33,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.15.0"
+CLI_VERSION = "1.16.0"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -415,6 +416,15 @@ def cmd_scopes(args):
     out(result)
 
 
+def cmd_target_catalog(args):
+    path = "/public/target-catalog"
+    if args.active_only:
+        path += "?active_only=true"
+    status, resp = http("GET", api(path))
+    expect(status, resp)
+    out(resp)
+
+
 def cmd_subscribe(args):
     for scope in args.scope:
         status, resp = authed("POST", f"/agent/prediction-scope/{scope}")
@@ -645,6 +655,10 @@ def main():
 
     sub.add_parser("status", help="Show stored credentials, token, and scope state").set_defaults(func=cmd_status)
     sub.add_parser("scopes", help="List available and subscribed prediction scopes").set_defaults(func=cmd_scopes)
+
+    tc = sub.add_parser("target-catalog", help="Full prediction-target taxonomy: category -> targets, each tagged with its challenge_type (public)")
+    tc.add_argument("--active-only", action="store_true", help="Only return targets already live on the platform")
+    tc.set_defaults(func=cmd_target_catalog)
 
     s = sub.add_parser("subscribe", help="Subscribe to prediction scopes")
     s.add_argument("scope", nargs="+")
