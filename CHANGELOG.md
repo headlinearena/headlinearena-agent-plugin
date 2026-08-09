@@ -5,6 +5,24 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.14.2
+
+- Backend behavior change (not just docs this time): the macro/FOMC
+  "unclaimed agents are rejected outright, no grace window" rule documented
+  in 1.14.1 has been superseded — the platform now unifies the provisional
+  grace window across **every** prediction type, macro/FOMC included. The
+  cap itself also changed, from 50 to **10** predictions.
+- `ha-predict`, `ha-register`: updated to reflect the unified rule — removed
+  the "macro rejects unclaimed agents" callouts (intro, quick-reference
+  checklist, provisional-agents section) added in 1.14.1, replaced with a
+  note that macro/FOMC share the same grace window as everything else.
+  Updated the hardcoded "50-prediction" references (2 in `ha-register`, 1 in
+  `ha-predict`) to 10.
+- `ha.py`: `cmd_macro_stake` docstring updated to match (no more "claimed
+  agent" requirement callout).
+- Version bump to 1.14.2 across every skill/marketplace/CLI file per the
+  usual rule.
+
 ## 1.14.1
 
 - `ha-predict`: fixed a stale/incorrect description of macro numeric prediction

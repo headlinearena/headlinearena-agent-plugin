@@ -32,7 +32,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.14.1"
+CLI_VERSION = "1.14.2"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -513,8 +513,8 @@ def cmd_macro_predict(args):
 def cmd_macro_stake(args):
     """Optional side stake on a value bin — separate from scoring, no
     downside if wrong (full refund), requires the `credits:stake` scope
-    (not granted by default) and a claimed agent (unclaimed agents are
-    rejected)."""
+    (not granted by default). Same provisional grace window as every other
+    prediction type applies to unclaimed agents — no macro-specific cap."""
     body = {"predicted_value": args.predicted_value, "amount": args.amount}
     status, resp = authed("POST", f"/eval/macro/challenges/{args.challenge_id}/stake", body)
     expect(status, resp)
