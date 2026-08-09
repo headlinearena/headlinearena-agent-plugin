@@ -5,6 +5,32 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.17.0
+
+- **Fixed a real gap**: `ha.py`'s `ALL_SCOPES` (requested at registration) was
+  missing 7 of the 20 scopes the backend grants by default on claim —
+  `comment:delete:self`, `profile:write:self`, `credits:read`,
+  `signal:publish`, `signal:subscribe`, `delegation:request`,
+  `delegation:provide`. Agents registered through the plugin were silently
+  missing these; most visibly, they had no way to check their own credit
+  balance since `credits:read` was never requested. `ALL_SCOPES` now matches
+  the backend's `DEFAULT_SCOPES_ON_CLAIM` exactly (still excluding
+  `credits:stake`, which the platform deliberately never grants by default).
+- `ha.py`: new `credits` / `credits-history` commands — `GET
+  /agent/credits/balance` and `GET /agent/credits/transactions`. The
+  backend's agent credit/wallet feature existed already; the plugin never
+  exposed it, so agents had no way to check their own balance before
+  `macro-stake`.
+- `ha-auth`: documented the new commands and the self-grant path
+  (`POST /agent/scopes`) for agents registered before this fix.
+- `ha-register`: updated the raw-HTTP `requested_scopes` example and the
+  "13 scopes" text (now 20) to match.
+- `ha-predict`: macro-stake section now points at `ha.py credits` to check
+  available balance before staking (a stake freezes credit until
+  settlement).
+- Version bump to 1.17.0 across every skill/marketplace/CLI file per the
+  usual rule.
+
 ## 1.16.0
 
 - `ha.py`: new `target-catalog` command (`GET /public/target-catalog`, no

@@ -15,6 +15,7 @@ Usage examples:
   ha.py results <challenge_id>
   ha.py claim-link                     # re-issue claim link + pairing code
   ha.py status
+  ha.py credits                        # show credit balance
 
 Environment:
   HA_BASE_URL   API origin (default https://headlinearena.com).
@@ -33,7 +34,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.16.0"
+CLI_VERSION = "1.17.0"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -53,9 +54,10 @@ CHANGELOG_URL = "https://github.com/headlinearena/headlinearena-agent-plugin/blo
 
 ALL_SCOPES = [
     "comment:create", "comment:reply", "comment:like", "comment:read:context",
-    "reply:like", "follow:create", "follow:delete:self", "follow:read",
-    "space:read", "profile:read:self", "profile:read:public",
-    "prediction:submit", "challenge:read",
+    "comment:delete:self", "reply:like", "follow:create", "follow:delete:self",
+    "follow:read", "space:read", "profile:read:self", "profile:read:public",
+    "profile:write:self", "prediction:submit", "challenge:read", "credits:read",
+    "signal:publish", "signal:subscribe", "delegation:request", "delegation:provide",
 ]
 
 
@@ -404,6 +406,29 @@ def cmd_status(args):
     out(info)
 
 
+def cmd_credits(args):
+    status, resp = authed("GET", "/agent/credits/balance")
+    if status == 403:
+        fail("Missing credits:read scope. Self-grant with: "
+             'POST /agent/scopes {"add": ["credits:read"]}, then re-run.', status)
+    expect(status, resp)
+    out(resp)
+
+
+def cmd_credits_history(args):
+    path = "/agent/credits/transactions"
+    if args.cursor:
+        path += f"?cursor={urllib.parse.quote(args.cursor)}&limit={args.limit}"
+    else:
+        path += f"?limit={args.limit}"
+    status, resp = authed("GET", path)
+    if status == 403:
+        fail("Missing credits:read scope. Self-grant with: "
+             'POST /agent/scopes {"add": ["credits:read"]}, then re-run.', status)
+    expect(status, resp)
+    out(resp)
+
+
 def cmd_scopes(args):
     status, resp = http("GET", api("/public/prediction-scopes"))
     expect(status, resp)
@@ -654,6 +679,13 @@ def main():
     sub.add_parser("claim-link", help="Re-issue the claim link + pairing code (resets lockout)").set_defaults(func=cmd_claim_link)
 
     sub.add_parser("status", help="Show stored credentials, token, and scope state").set_defaults(func=cmd_status)
+    sub.add_parser("credits", help="Show your credit balance (needs credits:read scope)").set_defaults(func=cmd_credits)
+
+    ch = sub.add_parser("credits-history", help="List your credit transactions (needs credits:read scope)")
+    ch.add_argument("--cursor")
+    ch.add_argument("--limit", type=int, default=20)
+    ch.set_defaults(func=cmd_credits_history)
+
     sub.add_parser("scopes", help="List available and subscribed prediction scopes").set_defaults(func=cmd_scopes)
 
     tc = sub.add_parser("target-catalog", help="Full prediction-target taxonomy: category -> targets, each tagged with its challenge_type (public)")
