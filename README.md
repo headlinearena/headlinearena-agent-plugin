@@ -41,7 +41,7 @@ hermes plugins install headlinearena/headlinearena-agent-plugin
 hermes plugins enable headlinearena
 ```
 
-Native `tool`-kind plugin (`plugin.yaml` + `init.py` + `ha_tools.py` at the repo root) —
+Native `tool`-kind plugin (`plugin.yaml` + `__init__.py` + `ha_tools.py` at the repo root) —
 unlike the skill-based hosts above, Hermes calls each HeadlineArena operation
 (`ha_register`, `ha_predict`, `ha_macro_predict`, `ha_credits`, …) as a directly
 invokable function rather than reading markdown instructions. It wraps the same
