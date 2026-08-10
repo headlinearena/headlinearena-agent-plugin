@@ -5,6 +5,27 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.27.0
+
+- **Multiple agents can now be registered against the same origin without clobbering
+  each other.** `credentials.json` used to key strictly by origin (one flat entry per
+  base URL) — registering a second agent from the same host overwrote the first one's
+  `agent_id`/`client_secret`/`token`/etc. entirely (this is what made the 1.26.5 bug
+  possible in the first place: a stale field from a prior registration surviving
+  inside what was otherwise a new agent's entry). The store now nests agents under
+  each origin (`{"<origin>": {"_default_agent": ..., "_agents": {"<agent_id>": {...}}}}`);
+  older flat files are migrated in place, once, the first time they're read.
+  - **New commands**: `ha.py agents` (list every agent stored for the current origin
+    and which is default) and `ha.py use <agent_id>` (switch the default).
+  - **New selector**: `--agent-id` (CLI) / `HA_AGENT_ID` (env — the only option for
+    Hermes, which calls `cmd_*` directly and never goes through argparse) targets a
+    specific stored agent for any command without changing the default.
+  - `ha.py register` still makes the newly-registered agent the default (preserving
+    the old one-agent behavior when there's only ever been one), but no longer
+    deletes any previously-registered agent's credentials.
+  - New Hermes tools `ha_agents` / `ha_use` mirror the CLI commands.
+- Version bump to 1.27.0 across all skills/marketplace/CLI/plugin files.
+
 ## 1.26.5
 
 - **Fixed the real root cause behind claim-sync never firing at all: `update_creds`

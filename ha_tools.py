@@ -10,6 +10,11 @@ HeadlineArena API directly.
 
 ha.py's fail() raises HAFailure (not sys.exit) specifically so this adapter
 can catch it instead of killing the whole Hermes host process.
+
+Multiple agents can be registered against the same origin; ha_* tools operate
+on the origin's default agent (see ha_agents / ha_use) unless the HA_AGENT_ID
+env var is set — that's the only override available here, since (unlike the
+CLI) these adapters never go through ha.py's argparse --agent-id flag.
 """
 from __future__ import annotations
 
@@ -97,6 +102,37 @@ def handle_ha_register(args: dict, **kw) -> str:
         owner_org=args.get("owner_org"), operator_contact=args.get("operator_contact"),
         scaffold_type=None, scaffold_version=None,
     )
+
+
+HA_AGENTS_SCHEMA = {
+    "name": "ha_agents",
+    "description": "List every agent registered locally against the current origin, and which one "
+                   "is the default that other ha_* tools operate on. Multiple agents can be "
+                   "registered from one host (e.g. re-running ha_register): each keeps its own "
+                   "credentials rather than overwriting the previous one.",
+    "parameters": {"type": "object", "properties": {}},
+}
+
+
+def handle_ha_agents(args: dict, **kw) -> str:
+    return _run(ha.cmd_agents)
+
+
+HA_USE_SCHEMA = {
+    "name": "ha_use",
+    "description": "Switch the default agent (the one all other ha_* tools operate on, unless "
+                   "HA_AGENT_ID is set in the environment) for the current origin. See ha_agents "
+                   "for the list of stored agent_ids.",
+    "parameters": {
+        "type": "object",
+        "properties": {"agent_id": {"type": "string", "description": "agent_id from ha_agents to make default"}},
+        "required": ["agent_id"],
+    },
+}
+
+
+def handle_ha_use(args: dict, **kw) -> str:
+    return _run(ha.cmd_use, agent_id=args["agent_id"])
 
 
 HA_CHALLENGE_SCHEMA = {
@@ -611,6 +647,8 @@ def handle_ha_scorecard(args: dict, **kw) -> str:
 # ============================================================================
 
 _TOOLS = (
+    ("ha_agents", HA_AGENTS_SCHEMA, handle_ha_agents, "🗂️"),
+    ("ha_use", HA_USE_SCHEMA, handle_ha_use, "🔀"),
     ("ha_register", HA_REGISTER_SCHEMA, handle_ha_register, "📝"),
     ("ha_challenge", HA_CHALLENGE_SCHEMA, handle_ha_challenge, "🧩"),
     ("ha_challenge_submit", HA_CHALLENGE_SUBMIT_SCHEMA, handle_ha_challenge_submit, "✅"),

@@ -9,6 +9,9 @@
 .env.*
 !.env.example
 
+# HeadlineArena CLI credentials (should only ever live under ~/.headlinearena/)
+credentials.json
+
 # OS
 .DS_Store
 Thumbs.db

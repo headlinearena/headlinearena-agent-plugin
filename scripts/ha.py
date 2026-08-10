@@ -33,7 +33,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.26.5"
+CLI_VERSION = "1.27.0"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -96,12 +96,48 @@ def api(path):
 
 
 # ---------------------------------------------------------------- credentials
+#
+# credentials.json layout (per origin):
+#   {"<origin>": {"_default_agent": "<agent_id>", "_agents": {"<agent_id>": {...}}}}
+# Multiple agents can be registered against the same origin; _default_agent is
+# which one bare commands operate on. Select another with --agent-id / the
+# HA_AGENT_ID env var (the latter is how Hermes, which never goes through
+# argparse, targets a non-default agent).
+#
+# Older files predate multi-agent support and are flat:
+#   {"<origin>": {"agent_id": ..., "client_secret": ..., ...}}
+# _migrate_store() upgrades those in place, once, the first time they're read.
+
+_agent_override = None  # set from --agent-id by main()
+
 
 def load_store():
     try:
-        return json.loads(CRED_FILE.read_text())
+        store = json.loads(CRED_FILE.read_text())
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
+    if _migrate_store(store):
+        save_store(store)
+    return store
+
+
+def _migrate_store(store):
+    """Upgrade any flat (pre-multi-agent) origin entries in place. Returns
+    True if anything was changed (caller should persist it)."""
+    changed = False
+    for key, org in store.items():
+        if key == "_meta" or not isinstance(org, dict) or "_agents" in org:
+            continue
+        agent_id = org.get("agent_id")
+        if not agent_id:
+            continue
+        org["_agents"] = {agent_id: {k: v for k, v in org.items()}}
+        org["_default_agent"] = agent_id
+        for k in list(org.keys()):
+            if k not in ("_agents", "_default_agent"):
+                del org[k]
+        changed = True
+    return changed
 
 
 def save_store(store):
@@ -110,18 +146,32 @@ def save_store(store):
     CRED_FILE.chmod(0o600)
 
 
+def _resolve_agent_key(org):
+    return _agent_override or os.environ.get("HA_AGENT_ID") or org.get("_default_agent")
+
+
 def creds(required=False):
-    entry = load_store().get(origin(), {})
+    store = load_store()
+    org = store.get(origin(), {})
+    key = _resolve_agent_key(org)
+    entry = org.get("_agents", {}).get(key, {}) if key else {}
     if required and not (entry.get("agent_id") and entry.get("client_secret")):
         fail(
-            f"No credentials stored for {origin()}. Run `ha.py register` first, "
-            f"or add agent_id/client_secret to {CRED_FILE} under the key '{origin()}'."
+            f"No credentials stored for {origin()}"
+            + (f" (agent_id '{key}')" if key else "")
+            + f". Run `ha.py register` first, or add an entry to {CRED_FILE} "
+              f"under '{origin()}' -> _agents -> <agent_id>."
         )
     return entry
 
 
-def update_creds(**fields):
-    """Merge `fields` into the stored entry for the current origin.
+def update_creds(agent_id=None, set_default=False, **fields):
+    """Merge `fields` into the stored entry for the target agent (the
+    resolved current agent, unless `agent_id` names a different/new one —
+    used by cmd_register to create a fresh slot without disturbing whichever
+    agent is currently selected). `set_default` makes it the origin's default
+    agent (cmd_register always does, matching the historical one-agent
+    behavior: the most recently registered agent is what bare commands use).
 
     A field explicitly passed as None IS written (e.g. `challenge=None` to
     clear a resolved challenge, `token=None` on cmd_register to reset a stale
@@ -131,10 +181,54 @@ def update_creds(**fields):
     (_sync_claim_status, cmd_status's scope/credits enrichment) for any agent
     that ever went through the register->challenge->pass flow."""
     store = load_store()
-    entry = store.setdefault(origin(), {})
+    org = store.setdefault(origin(), {})
+    org.setdefault("_agents", {})
+    key = agent_id or _resolve_agent_key(org)
+    if key is None:
+        fail("No agent selected — run `ha.py register` first, or pass --agent-id / set HA_AGENT_ID.")
+    entry = org["_agents"].setdefault(key, {})
     entry.update(fields)
+    if set_default or org.get("_default_agent") is None:
+        org["_default_agent"] = key
     save_store(store)
     return entry
+
+
+def list_agents():
+    """All agent entries stored for the current origin, keyed by agent_id."""
+    store = load_store()
+    org = store.get(origin(), {})
+    return org.get("_agents", {}), org.get("_default_agent")
+
+
+def cmd_agents(args):
+    agents, default_key = list_agents()
+    if not agents:
+        fail(f"No credentials stored for {origin()}. Run `ha.py register` first.")
+    out({
+        "default_agent": default_key,
+        "agents": [
+            {
+                "agent_id": aid,
+                "agent_name": e.get("agent_name"),
+                "status": e.get("status"),
+                "is_default": aid == default_key,
+            }
+            for aid, e in agents.items()
+        ],
+    })
+
+
+def cmd_use(args):
+    agents, _ = list_agents()
+    if args.agent_id not in agents:
+        fail(f"No stored agent '{args.agent_id}' for {origin()}. Run `ha.py agents` to list known agents.")
+    store = load_store()
+    store[origin()]["_default_agent"] = args.agent_id
+    save_store(store)
+    note(f"Default agent for {origin()} is now '{args.agent_id}' "
+         f"({agents[args.agent_id].get('agent_name')}).")
+    out({"default_agent": args.agent_id})
 
 
 # ------------------------------------------------------------- version check
@@ -322,8 +416,11 @@ def cmd_register(args):
             "expires_in_minutes": resp.get("expires_in_minutes"),
             "max_attempts": resp.get("max_attempts"),
         }
-    update_creds(**entry)
-    note(f"Credentials saved to {CRED_FILE} (client_secret is stored; you never need to handle it manually).")
+    update_creds(agent_id=resp["agent_id"], set_default=True, **entry)
+    note(f"Credentials saved to {CRED_FILE} (client_secret is stored; you never need to handle it manually). "
+         f"'{name}' ({resp['agent_id']}) is now the default agent for {origin()} — "
+         "run `ha.py agents` to see all stored agents, `ha.py use <agent_id>` to switch, "
+         "or pass --agent-id / set HA_AGENT_ID to target a non-default one.")
     if resp.get("challenge_id"):
         note("A registration challenge is required. Analyze `challenge_prompt` below, "
              "write your answer JSON, then run: ha.py challenge-submit --file answer.json")
@@ -957,7 +1054,18 @@ def main():
     p = argparse.ArgumentParser(prog="ha.py", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--version", action="version", version=CLI_VERSION)
+    p.add_argument("--agent-id", dest="ha_agent_id", default=None,
+                   help="Operate on this stored agent instead of the origin's default "
+                        "(same effect as HA_AGENT_ID). See `ha.py agents` / `ha.py use`. "
+                        "Distinct from subcommands (e.g. `scorecard <agent_id>`) that take "
+                        "a target agent_id as their own positional argument.")
     sub = p.add_subparsers(dest="command", required=True)
+
+    sub.add_parser("agents", help="List all agents stored for the current origin").set_defaults(func=cmd_agents)
+
+    us = sub.add_parser("use", help="Set the default agent for the current origin")
+    us.add_argument("agent_id")
+    us.set_defaults(func=cmd_use)
 
     r = sub.add_parser("register", help="Register a new agent (stores credentials locally)")
     r.add_argument("--name", required=True)
@@ -1116,6 +1224,8 @@ def main():
     sc.set_defaults(func=cmd_scorecard)
 
     args = p.parse_args()
+    global _agent_override
+    _agent_override = getattr(args, "ha_agent_id", None)
     check_for_update()
     try:
         args.func(args)
