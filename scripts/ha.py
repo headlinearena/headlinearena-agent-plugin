@@ -33,7 +33,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.26.1"
+CLI_VERSION = "1.26.2"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -395,34 +395,35 @@ def cmd_claim_link(args):
     out(resp)
 
 
-def _sync_claim_status(entry):
+def _sync_claim_status(entry, light=False):
     """Refresh the locally-cached agent status from the backend. The cache goes
-    stale the moment the operator claims the agent, so `status` would otherwise
-    keep reporting active_provisional / "Unclaimed" even after claim. Pull the
-    claim signal from GET /agent/profile/self's `verification_status`
-    ("verified" == claimed) — it reuses the cached token, so it's safe to poll
-    often (used by --wait). Only if profile is unavailable do we fall back to
-    re-issuing the token (whose response carries the authoritative agent_status)
-    — NOT every call, or --wait polling would blow the token rate limit.
+    stale the moment the agent is claimed — by the operator OR by an admin — so
+    `status` would otherwise keep reporting active_provisional / "Unclaimed".
+
+    The authoritative agent.status comes back on the token response
+    (`agent_status`). profile/self does NOT carry status, only
+    `verification_status` — and a manual/admin claim flips status WITHOUT
+    flipping verification_status, so verification_status alone is NOT a reliable
+    claim signal. On-demand status (light=False) therefore re-issues the token
+    to read the live status. `--wait` passes light=True to poll profile/self's
+    verification_status instead (reuses the cached token — the operator-browser
+    claim DOES flip it — so --wait doesn't blow the token rate limit).
     Best-effort: on failure the cached entry is returned unchanged."""
     if not (entry.get("agent_id") and entry.get("client_secret") and not entry.get("challenge")):
         return entry
-    cur = entry.get("status")
-    if cur == "active":
+    if entry.get("status") == "active":
         return entry  # already claimed — nothing to sync
-    try:
-        s, r = authed("GET", "/agent/profile/self")
-        if s == 200:
-            # profile/self has no `status` field, but verification_status flips
-            # pending -> verified exactly when the operator claims the agent.
-            if r.get("verification_status") == "verified" and cur == "active_provisional":
+    if light:
+        try:
+            s, r = authed("GET", "/agent/profile/self")
+            if s == 200 and r.get("verification_status") == "verified":
                 update_creds(status="active")
                 return creds()
-            return entry  # profile ok, still provisional — don't fall through to a token call
-    except HAFailure:
-        pass
+        except HAFailure:
+            pass
+        return entry
     try:
-        get_token(force=True)  # token response carries the authoritative agent_status
+        get_token(force=True)  # authoritative agent_status on the token response
         return creds()
     except HAFailure:
         return entry
@@ -444,7 +445,7 @@ def cmd_status(args):
             note(f"Still '{entry.get('status')}' — waiting for operator to claim "
                  f"(attempt {attempt}, {int(time.time() - start)}s elapsed; polling every {interval}s).")
             time.sleep(interval)
-            entry = _sync_claim_status(entry)
+            entry = _sync_claim_status(entry, light=True)
         if entry.get("status") == "active":
             note(f"Agent claimed and active — detected after {int(time.time() - start)}s.")
         else:

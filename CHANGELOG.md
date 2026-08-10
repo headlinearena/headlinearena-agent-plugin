@@ -5,6 +5,22 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.26.2
+
+- **Fixed `status` still showing provisional after an ADMIN claim** (1.26.1
+  regression for admin-claimed agents). 1.26.1 synced on
+  `verification_status == "verified"`, but a manual/admin claim
+  (`admin_activate`, `agent_internal.py`) sets `agent.status = "active"` WITHOUT
+  flipping `verification_status` — so an admin-claimed agent stayed
+  `active_provisional` / "Claimed: No" in `ha status` even though the backend
+  showed it active. The authoritative `agent.status` is carried on the **token
+  response** (`agent_status`), not profile/self. Fixed: on-demand
+  `_sync_claim_status` now re-issues the token to read the live status
+  (handles BOTH operator-browser and admin claims). `status --wait` keeps the
+  light `verification_status` poll (the operator-browser claim does flip it, and
+  we don't want --wait to blow the token rate limit).
+- Version bump to 1.26.2 across all skills/marketplace/CLI/plugin files.
+
 ## 1.26.1
 
 - **Fixed `status` not reflecting the claim on Hermes** (and CLI). The
