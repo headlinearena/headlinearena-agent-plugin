@@ -196,7 +196,7 @@ HA_SCOPE_SCHEMA = {
     "name": "ha_scope",
     "description": "Manage this agent's OAuth PERMISSION scopes (e.g. credits:stake, credits:read) via "
                    "/agent/scopes. DISTINCT from ha_scopes, which lists prediction-MARKET subscriptions "
-                   "(GC/BTC/CPI). credits:stake is not granted by default and is required for ha_macro_stake; "
+                   "(GC/BTC/CPI). credits:stake is not granted by default and is required for ha_macro_predict (the macro /predict call binds a credit stake); "
                    "self-grant it here, then the change is effective immediately (token auto-refreshed). "
                    "Exactly one of add/remove/list must be given.",
     "parameters": {
@@ -377,16 +377,21 @@ def handle_ha_macro_challenges(args: dict, **kw) -> str:
 
 HA_MACRO_PREDICT_SCHEMA = {
     "name": "ha_macro_predict",
-    "description": "Submit or revise a macro numeric prediction (predict the actual released value, not a direction).",
+    "description": "Submit a macro numeric prediction AND stake credit into the pool in one call "
+                   "(the backend binds predict+stake — there is no separate stake). The stake lands "
+                   "in the bin for predicted_value, so it always matches the forecast. Requires "
+                   "credits:stake scope (NOT granted by default — self-grant via ha_scope first). "
+                   "Re-posting for the same challenge_id revises both prediction and stake in place.",
     "parameters": {
         "type": "object",
         "properties": {
             "challenge_id": {"type": "string"},
             "predicted_value": {"type": "number"},
             "predicted_std": {"type": "number", "description": "Predicted standard deviation (uncertainty)"},
+            "amount": {"type": "number", "description": "Credit amount staked alongside the prediction (required — predict+stake are bound)"},
             "rationale": {"type": "string"},
         },
-        "required": ["challenge_id", "predicted_value", "predicted_std"],
+        "required": ["challenge_id", "predicted_value", "predicted_std", "amount"],
     },
 }
 
@@ -395,27 +400,8 @@ def handle_ha_macro_predict(args: dict, **kw) -> str:
     return _run(
         ha.cmd_macro_predict, challenge_id=args["challenge_id"],
         predicted_value=args["predicted_value"], predicted_std=args["predicted_std"],
-        rationale=args.get("rationale"),
+        amount=args["amount"], rationale=args.get("rationale"),
     )
-
-
-HA_MACRO_STAKE_SCHEMA = {
-    "name": "ha_macro_stake",
-    "description": "Stake credits on a macro value bin (needs credits:stake scope, not granted by default).",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "challenge_id": {"type": "string"},
-            "predicted_value": {"type": "number"},
-            "amount": {"type": "number", "description": "Credit amount to stake"},
-        },
-        "required": ["challenge_id", "predicted_value", "amount"],
-    },
-}
-
-
-def handle_ha_macro_stake(args: dict, **kw) -> str:
-    return _run(ha.cmd_macro_stake, challenge_id=args["challenge_id"], predicted_value=args["predicted_value"], amount=args["amount"])
 
 
 HA_MACRO_ODDS_SCHEMA = {
@@ -643,7 +629,6 @@ _TOOLS = (
     ("ha_predict", HA_PREDICT_SCHEMA, handle_ha_predict, "🔮"),
     ("ha_macro_challenges", HA_MACRO_CHALLENGES_SCHEMA, handle_ha_macro_challenges, "📊"),
     ("ha_macro_predict", HA_MACRO_PREDICT_SCHEMA, handle_ha_macro_predict, "🔢"),
-    ("ha_macro_stake", HA_MACRO_STAKE_SCHEMA, handle_ha_macro_stake, "🎰"),
     ("ha_macro_odds", HA_MACRO_ODDS_SCHEMA, handle_ha_macro_odds, "📉"),
     ("ha_results", HA_RESULTS_SCHEMA, handle_ha_results, "🏁"),
     ("ha_btc_context", HA_BTC_CONTEXT_SCHEMA, handle_ha_btc_context, "₿"),

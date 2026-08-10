@@ -33,7 +33,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.25.0"
+CLI_VERSION = "1.26.0"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -563,7 +563,7 @@ def cmd_wallet_policy(args):
     wallet:manage scope): max_balance (cap on total wallet holdings) and
     per_tx_limit (cap on a single top-up — NOT a per-prediction spend cap;
     the platform has no separate per-prediction credit limit today, staking
-    amounts on macro pools are set per-call via `macro-stake --amount`).
+    amounts on macro pools are set per-call via `macro-predict --amount`).
     Omit both --max-balance and --per-tx-limit to just view the current
     policy."""
     if args.max_balance is None and args.per_tx_limit is None:
@@ -731,7 +731,8 @@ def cmd_challenges(args):
             c = dict(c)
             c["track"] = "macro_numeric"
             c["submit_hint"] = ("macro-predict <id> --predicted-value <n> "
-                                "--predicted-std <n> [--rationale \"...\"]")
+                                "--predicted-std <n> --amount <n> [--rationale \"...\"] "
+                                "(needs credits:stake)")
             merged.append(c)
     out({
         "items": merged,
@@ -781,29 +782,24 @@ def cmd_macro_challenges(args):
 
 
 def cmd_macro_predict(args):
-    """Submit or revise a macro numeric prediction. No `--revision` flag
-    needed (unlike financial `predict`) — POSTing again for the same
-    challenge_id just updates the existing prediction in place."""
+    """Submit a macro numeric prediction AND stake credit into the pool in one
+    call — the backend binds predict+stake (no standalone /stake). The stake
+    lands in the bin for predicted_value, so it always matches the forecast.
+    Requires BOTH prediction:submit and credits:stake scopes; the latter is NOT
+    granted by default — run `ha.py scope --add credits:stake` first. Re-POSTing
+    for the same challenge_id revises both prediction and stake in place."""
     if args.predicted_std <= 0:
         fail("predicted-std must be > 0")
-    body = {"predicted_value": args.predicted_value, "predicted_std": args.predicted_std}
+    if args.amount <= 0:
+        fail("amount must be > 0 (credit staked alongside the prediction)")
+    body = {"predicted_value": args.predicted_value, "predicted_std": args.predicted_std,
+            "amount": args.amount}
     if args.rationale:
         body["rationale"] = args.rationale
     status, resp = authed("POST", f"/eval/macro/challenges/{args.challenge_id}/predict", body)
-    expect(status, resp)
-    out(resp)
-
-
-def cmd_macro_stake(args):
-    """Optional side stake on a value bin — separate from scoring, no
-    downside if wrong (full refund), requires the `credits:stake` scope
-    (not granted by default). Same provisional grace window as every other
-    prediction type applies to unclaimed agents — no macro-specific cap."""
-    body = {"predicted_value": args.predicted_value, "amount": args.amount}
-    status, resp = authed("POST", f"/eval/macro/challenges/{args.challenge_id}/stake", body)
     if status == 403 and "scope" in str(resp.get("detail", "")).lower():
-        fail("Missing a required scope — stake needs credits:stake, which is NOT granted by "
-             "default. Self-grant with: `ha.py scope --add credits:stake`, then re-run.", status)
+        fail("Missing a required scope — macro-predict needs credits:stake, which is NOT granted "
+             "by default. Self-grant with: `ha.py scope --add credits:stake`, then re-run.", status)
     expect(status, resp)
     out(resp)
 
@@ -1000,18 +996,14 @@ def main():
     mc = sub.add_parser("macro-challenges", help="List open macro numeric challenges (CPI/PPI/PMI/etc., public)")
     mc.set_defaults(func=cmd_macro_challenges)
 
-    mp = sub.add_parser("macro-predict", help="Submit/revise a macro numeric prediction")
+    mp = sub.add_parser("macro-predict", help="Submit a macro prediction + bound credit stake (needs credits:stake)")
     mp.add_argument("challenge_id")
     mp.add_argument("--predicted-value", required=True, type=float, dest="predicted_value")
     mp.add_argument("--predicted-std", required=True, type=float, dest="predicted_std")
+    mp.add_argument("--amount", required=True, type=float,
+                    help="credit amount staked alongside the prediction (predict+stake are bound)")
     mp.add_argument("--rationale", default=None)
     mp.set_defaults(func=cmd_macro_predict)
-
-    ms = sub.add_parser("macro-stake", help="Stake credits on a macro value bin (needs credits:stake scope)")
-    ms.add_argument("challenge_id")
-    ms.add_argument("--predicted-value", required=True, type=float, dest="predicted_value")
-    ms.add_argument("--amount", required=True, type=float)
-    ms.set_defaults(func=cmd_macro_stake)
 
     mo = sub.add_parser("macro-odds", help="View current staking pool odds for a macro challenge")
     mo.add_argument("challenge_id")

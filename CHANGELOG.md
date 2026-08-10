@@ -5,6 +5,37 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.26.0
+
+- **Macro `predict` and `stake` are now one bound call** — the backend changed
+  `/eval/macro/challenges/{id}/predict` to submit the forecast AND stake credit
+  in a single transaction, and **removed `/stake`** entirely. The plugin was
+  out of sync: `macro-predict` sent no `amount` (so it 422'd on the backend) and
+  `macro-stake` pointed at a now-deleted endpoint. Fixed:
+  - `cmd_macro_predict` / `ha_macro_predict` now take a **required `--amount`**
+    (credit staked into the bin for `predicted_value`) and POST
+    `{predicted_value, predicted_std, amount, rationale}`. The endpoint requires
+    **both** `prediction:submit` and `credits:stake` — the latter is not granted
+    by default, so macro-predict now self-diagnoses a 403 with
+    `ha.py scope --add credits:stake`.
+  - `cmd_macro_stake` / `ha_macro_stake` / the `macro-stake` subcommand **removed**
+    (dead endpoint). Hermes drops 31 → 30 tools; `plugin.yaml` `provides_tools`
+    updated.
+  - `macro-odds` unchanged (`/odds` still exists).
+  - This also **resolves the long-open question** from 1.24.0's changelog: the
+    report that macro-predict needs `credits:stake` was correct — the docs that
+    said `prediction:submit` only were wrong.
+- Docs (ha-predict macro section, ha-register, ha-auth, README) rewritten:
+  predict = value+std+amount (bound stake), needs credits:stake; the standalone
+  stake section removed; `challenges`'s macro `submit_hint` now includes
+  `--amount`. Also corrected the macro-stake references the 1.25.0 owner-wallet
+  release had carried (now `macro-predict --amount`).
+- **Technically breaking** (added required `--amount`; removed `macro-stake`),
+  versioned as minor per this repo's established practice (e.g. 1.21.0 made
+  register flags required as minor) — and the old behavior was already broken
+  against the current backend regardless.
+- Version bump to 1.26.0 across all skills/marketplace/CLI/plugin files.
+
 ## 1.25.0
 
 - **New owner-wallet commands: `owner-balance`, `owner-topup`, `wallet-policy`** — an
@@ -26,8 +57,8 @@ versioning rules in `CLAUDE.md`.
 - Note: there is currently no platform-level "max credit per single prediction"
   cap — `wallet-policy --per-tx-limit` bounds a single *top-up*, not a single
   prediction's spend. The only place credit moves per-prediction today is the
-  macro-pool `stake` endpoint, where the amount is caller-specified per call
-  (`macro-stake --amount`), not policy-capped.
+  macro `/predict` call, where the stake amount is caller-specified per call
+  (`macro-predict --amount`), not policy-capped.
 
 ## 1.24.1
 
