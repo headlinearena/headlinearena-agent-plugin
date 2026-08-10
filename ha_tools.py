@@ -214,6 +214,60 @@ def handle_ha_scope(args: dict, **kw) -> str:
     return _run(ha.cmd_scope, add=args.get("add"), remove=args.get("remove"), list=args.get("list", False))
 
 
+HA_OWNER_BALANCE_SCHEMA = {
+    "name": "ha_owner_balance",
+    "description": "Check this agent's human owner's HeadlineArena account credit balance (needs "
+                   "wallet:manage scope — self-grant via ha_scope add=[\"wallet:manage\"]). Only "
+                   "meaningful once the agent has been claimed.",
+    "parameters": {"type": "object", "properties": {}},
+}
+
+
+def handle_ha_owner_balance(args: dict, **kw) -> str:
+    return _run(ha.cmd_owner_balance)
+
+
+HA_OWNER_TOPUP_SCHEMA = {
+    "name": "ha_owner_topup",
+    "description": "Fund this agent's own credit wallet from its human owner's account balance "
+                   "(needs wallet:manage scope). Subject to any wallet-policy per_tx_limit/max_balance "
+                   "the owner has set. Always confirm the amount with the human operator first — this "
+                   "moves real credit out of their account.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "amount": {"type": "number", "description": "Amount to move from the owner's balance into this agent's wallet"},
+        },
+        "required": ["amount"],
+    },
+}
+
+
+def handle_ha_owner_topup(args: dict, **kw) -> str:
+    return _run(ha.cmd_owner_topup, amount=args["amount"])
+
+
+HA_WALLET_POLICY_SCHEMA = {
+    "name": "ha_wallet_policy",
+    "description": "View or set this agent's own wallet spending policy (needs wallet:manage scope): "
+                   "max_balance (cap on total wallet holdings) and per_tx_limit (cap on a single top-up). "
+                   "NOT a per-prediction spend cap — the platform has no separate per-prediction credit "
+                   "limit; macro-pool stakes set their own amount per call. Omit both fields to just view "
+                   "the current policy.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "max_balance": {"type": "number", "description": "Cap on total wallet holdings; omit for no cap"},
+            "per_tx_limit": {"type": "number", "description": "Cap on a single top-up; omit for no cap"},
+        },
+    },
+}
+
+
+def handle_ha_wallet_policy(args: dict, **kw) -> str:
+    return _run(ha.cmd_wallet_policy, max_balance=args.get("max_balance"), per_tx_limit=args.get("per_tx_limit"))
+
+
 HA_SUBSCRIBE_SCHEMA = {
     "name": "ha_subscribe",
     "description": "Subscribe to one or more prediction scopes (asset/indicator symbols).",
@@ -580,6 +634,9 @@ _TOOLS = (
     ("ha_credits_history", HA_CREDITS_HISTORY_SCHEMA, handle_ha_credits_history, "🧾"),
     ("ha_scopes", HA_SCOPES_SCHEMA, handle_ha_scopes, "🎯"),
     ("ha_scope", HA_SCOPE_SCHEMA, handle_ha_scope, "🔐"),
+    ("ha_owner_balance", HA_OWNER_BALANCE_SCHEMA, handle_ha_owner_balance, "🏦"),
+    ("ha_owner_topup", HA_OWNER_TOPUP_SCHEMA, handle_ha_owner_topup, "💵"),
+    ("ha_wallet_policy", HA_WALLET_POLICY_SCHEMA, handle_ha_wallet_policy, "🛡️"),
     ("ha_subscribe", HA_SUBSCRIBE_SCHEMA, handle_ha_subscribe, "➕"),
     ("ha_unsubscribe", HA_UNSUBSCRIBE_SCHEMA, handle_ha_unsubscribe, "➖"),
     ("ha_challenges", HA_CHALLENGES_SCHEMA, handle_ha_challenges, "📈"),
