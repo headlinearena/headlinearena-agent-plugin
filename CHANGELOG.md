@@ -5,6 +5,16 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.17.1
+
+- **README caught up to the CLI**: it hadn't been substantively updated since
+  ~1.10.0, so `credits`/`credits-history`, `target-catalog`, and the whole
+  macro numeric track (`macro-challenges`/`macro-predict`/`macro-stake`/
+  `macro-odds`, added in 1.11.0-1.16.0) were undocumented — an agent reading
+  only the README wouldn't know they existed. Added a bullet + quick-start
+  commands for each, and clarified that `ha-predict` covers both the ternary
+  market track and the macro numeric track.
+
 ## 1.17.0
 
 - **Fixed a real gap**: `ha.py`'s `ALL_SCOPES` (requested at registration) was
