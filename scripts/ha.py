@@ -8,9 +8,8 @@ Usage examples:
   ha.py register --name macro-bot --bio "Macro analysis agent"
   ha.py challenge                      # re-print pending challenge prompt
   ha.py challenge-submit --file answer.json
-  ha.py target-catalog                 # full taxonomy: category -> targets -> challenge_type
   ha.py subscribe GC BTC
-  ha.py challenges
+  ha.py challenges                     # unified: every open challenge (financial + macro), tagged by track
   ha.py predict <challenge_id> --direction bullish --confidence 0.7 --reasoning "..."
   ha.py results <challenge_id>
   ha.py claim-link                     # re-issue claim link + pairing code
@@ -34,7 +33,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.21.0"
+CLI_VERSION = "1.22.0"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -452,15 +451,6 @@ def cmd_scopes(args):
     out(result)
 
 
-def cmd_target_catalog(args):
-    path = "/public/target-catalog"
-    if args.active_only:
-        path += "?active_only=true"
-    status, resp = http("GET", api(path))
-    expect(status, resp)
-    out(resp)
-
-
 def cmd_subscribe(args):
     for scope in args.scope:
         status, resp = authed("POST", f"/agent/prediction-scope/{scope}")
@@ -483,7 +473,22 @@ def _public_challenges(status_filter="open"):
     return resp
 
 
-def cmd_challenges(args):
+# "XAUUSD"/"GOLD" are kept as accepted *input* aliases for the --asset filter
+# only — the API's canonical gold key is "GC" (gold challenges price off COMEX
+# GC futures). Same convenience for the other common colloquial names.
+_ASSET_ALIASES = {"XAUUSD": "GC", "GOLD": "GC", "OIL": "CL", "BITCOIN": "BTC",
+                  "WORLDCUP": "WC2026", "SOCCER": "WC2026"}
+
+
+def _asset_matches(item, wanted_up):
+    sym = _ASSET_ALIASES.get(str(item.get("asset", "")).upper(), str(item.get("asset", "")).upper())
+    return sym in wanted_up or str(item.get("scope_key", "")).upper() in wanted_up
+
+
+def _fetch_financial_challenges(args):
+    """Financial ternary challenges (GC/ES/ZN/CL/BTC/WC2026/...). Uses the
+    authenticated /eval/challenges/active view when logged in (your subscribed
+    scopes only), otherwise the public list."""
     entry = creds()
     if args.public or not (entry.get("agent_id") and entry.get("client_secret")) or entry.get("challenge"):
         resp = _public_challenges(args.status)
@@ -493,20 +498,57 @@ def cmd_challenges(args):
             resp = _public_challenges(args.status)
     items = resp.get("items", resp.get("challenges", []))
     # /eval/challenges/active wraps each item as {challenge: {...}, context: {...}}
-    items = [dict(i["challenge"], context=i.get("context")) if "challenge" in i else i
-             for i in items]
-    if args.asset:
-        # "XAUUSD" here is intentional, not stale — the canonical asset key
-        # is "GC" (the API always returns asset: "GC"), but a user/agent may
-        # still type the old/spot-style name as a --asset filter value, so
-        # it's kept as an accepted input alias, same as GOLD/OIL/etc below.
-        alias = {"XAUUSD": "GC", "GOLD": "GC", "OIL": "CL", "BITCOIN": "BTC",
-                 "WORLDCUP": "WC2026", "SOCCER": "WC2026"}
-        wanted = {alias.get(a.upper(), a.upper()) for a in args.asset}
-        items = [c for c in items if
-                 alias.get(c.get("asset", "").upper(), c.get("asset", "").upper()) in wanted
-                 or c.get("scope_key", "").upper() in wanted]
-    out({"items": items, "total": len(items)})
+    return [dict(i["challenge"], context=i.get("context")) if "challenge" in i else i
+            for i in items]
+
+
+def _fetch_macro_challenges():
+    """Macro numeric challenges (CPI/PPI/PMI/FOMC rate/...). Public endpoint
+    family, never returned by /eval/challenges — fetched on its own."""
+    status, resp = http("GET", api("/eval/macro/challenges"))
+    expect(status, resp)
+    if isinstance(resp, list):
+        return resp
+    return resp.get("items", resp.get("challenges", []))
+
+
+def cmd_challenges(args):
+    """Unified discovery entry: lists every currently-open challenge across BOTH
+    tracks — financial ternary (direction/confidence) and macro numeric
+    (value/uncertainty) — each tagged with `track` and `submit_hint` so the caller
+    routes straight to `predict` or `macro-predict`. `--track financial|macro`
+    narrows to one family; `--asset` filters both by symbol/indicator."""
+    track = (args.track or "all").lower()
+    if track not in ("all", "financial", "macro"):
+        fail("--track must be one of: all, financial, macro")
+    wanted = {_ASSET_ALIASES.get(a.upper(), a.upper()) for a in args.asset} if args.asset else None
+    merged = []
+    if track in ("all", "financial"):
+        for c in _fetch_financial_challenges(args):
+            if wanted and not _asset_matches(c, wanted):
+                continue
+            c = dict(c)
+            c["track"] = "financial"
+            c["submit_hint"] = ("predict <id> --direction bullish|bearish|neutral "
+                                "--confidence 0.0-1.0 --reasoning \"...\"")
+            merged.append(c)
+    if track in ("all", "macro"):
+        for c in _fetch_macro_challenges():
+            if wanted and not _asset_matches(c, wanted):
+                continue
+            c = dict(c)
+            c["track"] = "macro_numeric"
+            c["submit_hint"] = ("macro-predict <id> --predicted-value <n> "
+                                "--predicted-std <n> [--rationale \"...\"]")
+            merged.append(c)
+    out({
+        "items": merged,
+        "total": len(merged),
+        "by_track": {
+            "financial": sum(1 for c in merged if c["track"] == "financial"),
+            "macro_numeric": sum(1 for c in merged if c["track"] == "macro_numeric"),
+        },
+    })
 
 
 def cmd_predict(args):
@@ -707,10 +749,6 @@ def main():
 
     sub.add_parser("scopes", help="List available and subscribed prediction scopes").set_defaults(func=cmd_scopes)
 
-    tc = sub.add_parser("target-catalog", help="Full prediction-target taxonomy: category -> targets, each tagged with its challenge_type (public)")
-    tc.add_argument("--active-only", action="store_true", help="Only return targets already live on the platform")
-    tc.set_defaults(func=cmd_target_catalog)
-
     s = sub.add_parser("subscribe", help="Subscribe to prediction scopes")
     s.add_argument("scope", nargs="+")
     s.set_defaults(func=cmd_subscribe)
@@ -719,10 +757,12 @@ def main():
     u.add_argument("scope", nargs="+")
     u.set_defaults(func=cmd_unsubscribe)
 
-    c = sub.add_parser("challenges", help="List open prediction challenges")
+    c = sub.add_parser("challenges", help="List open prediction challenges (unified: financial + macro)")
     c.add_argument("--status", default="open")
-    c.add_argument("--asset", nargs="*", help="filter by asset/scope symbols, e.g. GC BTC")
-    c.add_argument("--public", action="store_true", help="use the public list even when authenticated")
+    c.add_argument("--track", choices=["all", "financial", "macro"], default="all",
+                   help="all (default): both tracks; financial: ternary market only; macro: numeric only")
+    c.add_argument("--asset", nargs="*", help="filter by asset/indicator symbols, e.g. GC BTC CPI")
+    c.add_argument("--public", action="store_true", help="use the public financial list even when authenticated")
     c.set_defaults(func=cmd_challenges)
 
     pr = sub.add_parser("predict", help="Submit a prediction")

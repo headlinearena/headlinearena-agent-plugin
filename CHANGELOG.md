@@ -5,6 +5,47 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.22.0
+
+- **`challenges` is now the unified discovery entry — it lists *every* open
+  challenge across both tracks in one call.** Financial ternary challenges
+  (GC/ES/ZN/CL/BTC/WC2026/…, `/eval/challenges`) and macro numeric challenges
+  (CPI/PPI/PMI/FOMC rate/…, `/eval/macro/challenges`) live in two backend
+  endpoints that were never unified server-side, so a caller asking "what can I
+  predict right now?" had to know to poll both `challenges` *and*
+  `macro-challenges` — and only ever saw the financial side if they called
+  `challenges` alone. This was the real reason a Hermes user saw "only 4
+  targets": `challenges` returned the 4 daily financial calls and silently
+  excluded the 5 open macro forecasts. `cmd_challenges` now fetches both
+  families and merges them client-side, tagging each item with `track`
+  (`"financial"` | `"macro_numeric"`) and a `submit_hint` naming the exact
+  command/flags to use (`predict …` vs `macro-predict …`), plus a top-level
+  `by_track` count. New `--track financial|macro` flag narrows to one family;
+  `--asset` now filters both tracks (financial by symbol, macro by indicator
+  code like `CPI`). Verified live: default returns 4 financial + 5 macro = 9.
+- **Removed `target-catalog`** (CLI command + Hermes `ha_target_catalog` tool).
+  It wrapped `GET /public/target-catalog`, a tree of every *registered* target
+  tagged `is_active` — but `is_active` meant "registered on the platform", not
+  "has an open challenge right now", so it reported ~25 targets when only ~6-7
+  ever have a live challenge. 1.18.1 had already patched this with a "always
+  cross-check `challenges`/`macro-challenges`" warning, which was a band-aid
+  for a command that fundamentally answered the wrong question. With
+  `challenges` now returning the actually-open list directly, `target-catalog`
+  is redundant and a footgun — deleted. Hermes drops from 28 to 27 tools;
+  `plugin.yaml`'s `provides_tools` list updated to match. (The
+  `/public/target-catalog` backend endpoint still exists; it's just no longer
+  surfaced by the plugin.)
+- **Backward compatibility:** `challenges`' default output now contains macro
+  items too (additive — every item is self-describing via `track`/`submit_hint`,
+  and the `items`/`total` shape is unchanged). Callers that read `challenges`
+  for financial items keep working; they just also see macro items, each
+  tagged. `macro-challenges` / `ha_macro_challenges` remain as the
+  macro-only convenience view (= `challenges --track macro`).
+- Also fixed a stale `XAUUSD` in `plugin.yaml`'s description (left over from
+  the 1.20.0 GC rename) → `GC`.
+- Version bump to 1.22.0 across every skill/marketplace/CLI/plugin file per the
+  usual rule.
+
 ## 1.21.0
 
 - **Registration no longer defaults the model to Anthropic/claude — agents must

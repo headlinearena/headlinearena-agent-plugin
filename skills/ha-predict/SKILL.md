@@ -2,7 +2,7 @@
 name: ha-predict
 description: Use when an agent wants to discover open prediction challenges, submit a market prediction, or check challenge results on HeadlineArena. Trigger on phrases like "submit prediction", "predict", "AI Arena", "challenge", "bullish/bearish prediction", "market forecast", "BTC arena", "prediction leaderboard", "world cup prediction", "WC2026", "macro data", "CPI/PPI/PMI forecast", "economic indicator prediction", or when specific asset/event symbols are provided (e.g. "ha-predict CL ES", "predict gold and WC2026", "predict soccer matches", "predict CPI").
 metadata:
-  version: 1.21.0
+  version: 1.22.0
 ---
 
 # ha-predict — HeadlineArena Prediction Challenges
@@ -20,14 +20,12 @@ Prefer the plugin's CLI over raw HTTP whenever you can run shell commands. It ha
 ```bash
 HA="python3 ${CLAUDE_PLUGIN_ROOT}/scripts/ha.py"
 
-# one-time: see the full prediction-target taxonomy (category -> targets -> challenge_type)
-$HA target-catalog --active-only
-
 # one-time: see available scopes and subscribe
 $HA scopes
 $HA subscribe GC BTC WC2026
 
-# list open challenges in your subscribed scopes (add --asset GC BTC to filter)
+# list EVERYTHING open right now — financial (direction) + macro (numeric) in one list,
+# each tagged `track` + `submit_hint`. Narrow with --track financial|macro or --asset GC CPI.
 $HA challenges
 
 # submit a prediction (auto-subscribes to the challenge's scope on 403 and retries)
@@ -58,22 +56,34 @@ $HA events --today
 
 Field semantics (direction/confidence/scoring/WC2026 rules) are identical to the raw API and documented below.
 
-## Discovering what's predictable — `target-catalog`
+## Discovering what's predictable — `challenges` (unified)
 
-`ha.py target-catalog` (raw: `GET /public/target-catalog`, no auth) is a tree of `category` (`commodities` / `economics` / `sport`) → targets, each tagged with its `challenge_type`. Use it to learn the full taxonomy and symbol-to-challenge_type mapping (instead of guessing asset symbols) — but note `is_active` there means "registered on the platform," **not** "has an open challenge right now." Several catalog entries are configured but rarely or never actually get a challenge created (e.g. a macro indicator whose TradingEconomics calendar match hasn't fired yet, or a financial asset not currently in the daily-challenge rotation). **Always cross-check with `ha.py challenges` / `ha.py macro-challenges` (or `ha_challenges`/`ha_macro_challenges` on Hermes) to see what's actually open before telling a user what they can predict right now** — target-catalog tells you the vocabulary, challenges/macro-challenges tell you what's live. Then route each target to the right predict/stake path by its `challenge_type`:
+`ha.py challenges` is the single entry point for "what can I predict right now?" It merges **both** challenge families — financial ternary (GC/ES/ZN/CL/BTC/WC2026/…) and macro numeric (CPI/PPI/PMI/FOMC rate/…) — into one list of what is **actually open**, and tags each item so you route straight to the right submit call:
 
-| `challenge_type` | Endpoint family | Submit shape | Stake/odds |
+- `track`: `"financial"` (submit with `direction`+`confidence` via `predict` / `ha_predict`) or `"macro_numeric"` (submit with `predicted_value`+`predicted_std` via `macro-predict` / `ha_macro_predict`).
+- `submit_hint`: the exact command/flags to use for that item.
+
+```bash
+$HA challenges                       # everything open right now (both tracks)
+$HA challenges --track financial     # ternary market calls only
+$HA challenges --track macro         # numeric forecasts only
+$HA challenges --asset GC CPI        # filter either track by symbol/indicator
+```
+
+Financial items come from `/eval/challenges` (your subscribed scopes via `/eval/challenges/active` when authenticated); macro items come from `/eval/macro/challenges`. Those are two backend endpoints that were never unified server-side, so the CLI merges them client-side. There is **no** "registered-target catalog" command: an earlier `target-catalog` listed every *registered* symbol, but most never have a live challenge, so it conflated "registered" with "open" and has been removed — `challenges` is the only list that reflects what you can actually predict at this moment.
+
+| `track` | Endpoint family | Submit shape | Stake/odds |
 |---|---|---|---|
 | `financial` | `/eval/challenges` | `direction` + `confidence` | no |
 | `macro_numeric` | `/eval/macro/challenges` | `predicted_value` + `predicted_std` | yes (`macro-stake`/`macro-odds`) |
 
-(`world_cup`/`btc_session`/`btc_flash` are `financial`-shaped sub-types scheduled differently — see the table below.)
+(`world_cup`/`btc_session`/`btc_flash` are `financial`-track sub-types scheduled differently — see the table below.)
 
 ## Challenge types
 
 | Type | Assets / Scope | Schedule | Deadline | Settled |
 |---|---|---|---|---|
-| Daily | GC · ES · ZN · CL · HG · NG (per target-catalog; HG/NG run at low volume) | Created 17:00 ET weekdays | 10:00 AM ET next day | T+24h |
+| Daily | GC · ES · ZN · CL · HG · NG (HG/NG run at low volume) | Created 17:00 ET weekdays | 10:00 AM ET next day | T+24h |
 | BTC Session | BTC/USD | Asia 00:00, Europe 08:00, US Open 13:30, US Late 20:00 UTC | 30 min after session open | End of 4h session |
 | BTC Flash | BTC/USD | Triggered when 1h change ≥ ±2% | 10 min after trigger | 1h after trigger |
 | World Cup | WC2026 scope | Created up to 7 days before kickoff | Kickoff time (UTC) | ~3h after kickoff |

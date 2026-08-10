@@ -188,29 +188,6 @@ def handle_ha_scopes(args: dict, **kw) -> str:
     return _run(ha.cmd_scopes)
 
 
-HA_TARGET_CATALOG_SCHEMA = {
-    "name": "ha_target_catalog",
-    "description": "Full prediction-target taxonomy (category -> targets), each tagged with its challenge_type "
-                    "(financial ternary vs. macro_numeric). Public — no auth required. Use this to learn the "
-                    "vocabulary/symbol-to-challenge_type mapping instead of guessing symbols — but note "
-                    "'active'/is_active here means 'registered on the platform', NOT 'has an open challenge "
-                    "right now'. Several registered targets rarely or never actually get a challenge created "
-                    "(e.g. a macro indicator whose calendar match hasn't fired yet). Always cross-check with "
-                    "ha_challenges/ha_macro_challenges to see what's actually predictable at this moment before "
-                    "telling a user what they can predict.",
-    "parameters": {
-        "type": "object",
-        "properties": {
-            "active_only": {"type": "boolean", "description": "Only return targets registered as active (is_active) — this is NOT the same as currently having an open challenge; still cross-check with ha_challenges/ha_macro_challenges", "default": False},
-        },
-    },
-}
-
-
-def handle_ha_target_catalog(args: dict, **kw) -> str:
-    return _run(ha.cmd_target_catalog, active_only=args.get("active_only", False))
-
-
 HA_SUBSCRIBE_SCHEMA = {
     "name": "ha_subscribe",
     "description": "Subscribe to one or more prediction scopes (asset/indicator symbols).",
@@ -251,20 +228,29 @@ def handle_ha_unsubscribe(args: dict, **kw) -> str:
 
 HA_CHALLENGES_SCHEMA = {
     "name": "ha_challenges",
-    "description": "List prediction challenges (ternary market track: GC/ES/ZN/CL/BTC/WC2026/etc.).",
+    "description": "Unified discovery: list every currently-open prediction challenge across BOTH tracks — "
+                   "financial ternary (GC/ES/ZN/CL/BTC/WC2026/..., submit with direction+confidence via "
+                   "ha_predict) and macro numeric (CPI/PPI/PMI/FOMC rate/..., submit with predicted_value+"
+                   "predicted_std via ha_macro_predict). Each item is tagged `track` (financial | macro_numeric) "
+                   "and carries a `submit_hint` naming the tool/flags to use, so you can route straight to the "
+                   "right predict call. This is the recommended FIRST call to answer 'what can I predict right "
+                   "now?' — it returns only what is actually open. Narrow with track/asset if you only want one "
+                   "side.",
     "parameters": {
         "type": "object",
         "properties": {
             "status": {"type": "string", "description": "open (default), resolved, etc.", "default": "open"},
-            "asset": {"type": "array", "items": {"type": "string"}, "description": "Filter by asset/scope symbols, e.g. [\"GC\", \"BTC\"]"},
-            "public": {"type": "boolean", "description": "Use the public list even when authenticated", "default": False},
+            "track": {"type": "string", "enum": ["all", "financial", "macro"], "description": "all (default): both tracks; financial: ternary market only; macro: numeric only", "default": "all"},
+            "asset": {"type": "array", "items": {"type": "string"}, "description": "Filter by asset/indicator symbols, e.g. [\"GC\", \"BTC\", \"CPI\"]"},
+            "public": {"type": "boolean", "description": "Use the public financial list even when authenticated", "default": False},
         },
     },
 }
 
 
 def handle_ha_challenges(args: dict, **kw) -> str:
-    return _run(ha.cmd_challenges, status=args.get("status", "open"), asset=args.get("asset"), public=args.get("public", False))
+    return _run(ha.cmd_challenges, status=args.get("status", "open"), track=args.get("track", "all"),
+                asset=args.get("asset"), public=args.get("public", False))
 
 
 HA_PREDICT_SCHEMA = {
@@ -299,7 +285,8 @@ def handle_ha_predict(args: dict, **kw) -> str:
 
 HA_MACRO_CHALLENGES_SCHEMA = {
     "name": "ha_macro_challenges",
-    "description": "List open macro numeric challenges (CPI/PPI/PMI/FOMC rate/etc., public).",
+    "description": "List open macro numeric challenges (CPI/PPI/PMI/FOMC rate/etc., public). Equivalent to "
+                   "ha_challenges with track=macro — kept as a dedicated entry for macro-only polling.",
     "parameters": {"type": "object", "properties": {}},
 }
 
@@ -558,7 +545,6 @@ _TOOLS = (
     ("ha_credits", HA_CREDITS_SCHEMA, handle_ha_credits, "💰"),
     ("ha_credits_history", HA_CREDITS_HISTORY_SCHEMA, handle_ha_credits_history, "🧾"),
     ("ha_scopes", HA_SCOPES_SCHEMA, handle_ha_scopes, "🎯"),
-    ("ha_target_catalog", HA_TARGET_CATALOG_SCHEMA, handle_ha_target_catalog, "📚"),
     ("ha_subscribe", HA_SUBSCRIBE_SCHEMA, handle_ha_subscribe, "➕"),
     ("ha_unsubscribe", HA_UNSUBSCRIBE_SCHEMA, handle_ha_unsubscribe, "➖"),
     ("ha_challenges", HA_CHALLENGES_SCHEMA, handle_ha_challenges, "📈"),
