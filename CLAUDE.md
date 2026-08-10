@@ -52,6 +52,14 @@ same version number**. This has drifted twice before (CLI_VERSION and plugin.jso
 skills/marketplace version across two releases) — the CLI's own update-check feature depends on this
 number being trustworthy, so don't skip a file in the list below.
 
+**The git tag and `CLI_VERSION` must always match exactly.** The release tag (`vX.Y.Z`, with the
+`v` prefix) must point at a commit whose `scripts/ha.py` `CLI_VERSION` is exactly `X.Y.Z` (no `v`).
+`ha.py --version` prints `CLI_VERSION`, and the daily update-check compares it against the published
+`marketplace.json` — so a tag/CLI mismatch means a user installed at tag `v1.26.1` but `ha.py --version`
+reports a different number, which breaks update detection and confuses every host. Never push a tag
+whose commit doesn't carry the matching `CLI_VERSION`, and never bump `CLI_VERSION` without tagging
+the same version.
+
 Use semantic versioning (`major.minor.patch`):
 
 | Change type | Version bump | Examples |
@@ -69,3 +77,9 @@ When shipping any change:
 6. Update `CLI_VERSION` in `scripts/ha.py`
 7. Add an entry to `CHANGELOG.md`
 8. Create a git tag matching the new version (e.g. `v1.6.0`)
+9. **Verify the tag/CLI match before considering the release done** — all three must agree:
+   ```bash
+   git describe --tags --exact-match HEAD   # vX.Y.Z  (the tag on this commit)
+   grep 'CLI_VERSION =' scripts/ha.py       # CLI_VERSION = "X.Y.Z"
+   python3 scripts/ha.py --version          # X.Y.Z
+   ```
