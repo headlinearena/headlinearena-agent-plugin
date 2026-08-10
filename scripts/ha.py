@@ -33,7 +33,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.26.2"
+CLI_VERSION = "1.26.3"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -383,7 +383,20 @@ def cmd_claim_link(args):
         "agent_id": entry["agent_id"],
         "client_secret": entry["client_secret"],
     })
-    expect(status, resp)
+    if status not in (200, 201, 204):
+        detail = resp.get("detail", resp)
+        # The backend rejects a refresh once the agent is already claimed, but
+        # that rejection is itself the authoritative claim signal — the local
+        # cache was otherwise never going to see it (the operator's claim
+        # doesn't push to us). Sync status=active instead of just failing, so
+        # a stale local "active_provisional" doesn't linger indefinitely.
+        if "already claimed" in str(detail).lower() or "already active" in str(detail).lower():
+            update_creds(status="active")
+            note("Agent is already claimed and active — local status synced; "
+                 "no new claim link needed.")
+            out(resp)
+            return
+        fail(detail, status)
     update_creds(
         claim_url=resp.get("claim_url"),
         pairing_code=resp.get("pairing_code"),

@@ -5,6 +5,19 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.26.3
+
+- **Fixed `claim-link` swallowing the claim signal when already claimed.**
+  If an agent runs `ha.py claim-link` after the operator already claimed it,
+  the backend rejects the refresh with an "already claimed" error — but
+  `cmd_claim_link` treated any non-2xx response as a plain failure and
+  exited, never updating the local `credentials.json`. So `status` kept
+  reporting `active_provisional` even though the operator-facing error
+  message proved the agent was active. Fixed: `claim-link` now recognizes an
+  "already claimed"/"already active" detail and syncs local `status=active`
+  instead of just failing.
+- Version bump to 1.26.3 across all skills/marketplace/CLI/plugin files.
+
 ## 1.26.2
 
 - **Fixed `status` still showing provisional after an ADMIN claim** (1.26.1
