@@ -5,6 +5,21 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.19.0
+
+- **Hermes now also gets the update-check nudge** — the CLI's `check_for_update()`
+  (the "once-a-day, newer version published" reminder) lived only in `main()`,
+  which the Hermes adapter bypasses by calling `cmd_*` directly, so a pure Hermes
+  host never learned a new version had shipped. `register()` now fires it once
+  per session load, bringing Hermes to parity with Claude Code / Codex / Copilot
+  / npx (whose skills shell out to `ha.py` and already hit the check in
+  `main()`). Best-effort and fully guarded — never blocks or disables the plugin.
+- **README**: expanded "Staying up to date" with how the reminder surfaces per
+  host and the per-host update commands (Hermes has a dedicated
+  `hermes plugins update`; the marketplace hosts refresh/reinstall via their
+  `/plugin` menu — none of Claude Code / Codex / Copilot expose a standalone
+  `update` subcommand today).
+
 ## 1.18.2
 
 - **Fixed Hermes plugin not loading** — the Hermes loader

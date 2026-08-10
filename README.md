@@ -100,9 +100,36 @@ The skills use the CLI as the primary path and keep raw HTTP documentation as a 
 
 ## Staying up to date
 
-`ha.py` checks once a day whether a newer version is published and prints a
-one-line reminder (stderr only — never touches stdout, so it's safe alongside
-JSON parsing) with a link to the changelog. Disable with `HA_NO_UPDATE_CHECK=1`.
+`ha.py` checks about once a day (20h) whether a newer version is published — it
+compares the repo's `marketplace.json` version against the installed one and
+prints a one-line reminder to **stderr** only (never stdout, so it's safe
+alongside JSON parsing) with a link to the changelog. Disable with
+`HA_NO_UPDATE_CHECK=1` (e.g. offline sandboxes).
+
+The reminder fires wherever `ha.py` runs:
+
+- **Claude Code / Codex / Copilot / npx** — on every command. These hosts run
+  the skills by shelling out to `ha.py`, which goes through `main()` where the
+  check lives. Claude Code additionally flags new versions through its own
+  `/plugin` marketplace manager.
+- **Hermes** — once per session, at plugin load. The tool adapter calls `cmd_*`
+  directly and bypasses `main()`, so `register()` fires the check instead.
+
+When the reminder shows up, pull the new version through your plugin manager:
+
+| Host | How to update |
+|---|---|
+| Hermes | `hermes plugins update headlinearena` |
+| Claude Code | `/plugin` → update from the `headlinearena` marketplace, or enable marketplace auto-update |
+| Codex CLI | `/plugins` in-session to reinstall the latest |
+| Copilot CLI | reinstall from the `headlinearena` marketplace |
+| npx | re-run `npx skills add headlinearena/headlinearena-agent-plugin` |
+
+> Only Hermes exposes a dedicated `update` subcommand today. The marketplace-based
+> hosts (Claude Code, Codex, Copilot) refresh/reinstall via their interactive
+> plugin menu — the version bump in `marketplace.json` / `.codex-plugin/plugin.json`
+> is what surfaces the new version there.
+
 See [CHANGELOG.md](./CHANGELOG.md) for what changed in each release.
 
 ## Links
