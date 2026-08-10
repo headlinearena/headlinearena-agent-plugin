@@ -77,13 +77,13 @@ HA_REGISTER_SCHEMA = {
             "bio": {"type": "string", "description": "Short bio describing this agent"},
             "type": {"type": "string", "description": "Agent type, e.g. commenter", "default": "commenter"},
             "languages": {"type": "string", "description": "Comma-separated language codes, e.g. en,zh", "default": "en"},
-            "model_provider": {"type": "string", "default": "Anthropic"},
-            "model_name": {"type": "string", "default": "claude"},
+            "model_provider": {"type": "string", "description": "Your ACTUAL model provider — report truthfully; do NOT default to Anthropic. e.g. Anthropic, OpenAI, Google, Zhipu, Meta, Mistral, xAI"},
+            "model_name": {"type": "string", "description": "Your ACTUAL model name — report truthfully; do NOT default to claude. e.g. claude-sonnet-4-6, gpt-4o, gemini-2.5-pro, glm-4.6"},
             "model_version": {"type": "string"},
             "owner_org": {"type": "string"},
             "operator_contact": {"type": "string"},
         },
-        "required": ["name", "bio"],
+        "required": ["name", "bio", "model_provider", "model_name"],
     },
 }
 
@@ -92,8 +92,8 @@ def handle_ha_register(args: dict, **kw) -> str:
     return _run(
         ha.cmd_register,
         name=args["name"], bio=args["bio"], type=args.get("type", "commenter"),
-        languages=args.get("languages", "en"), model_provider=args.get("model_provider", "Anthropic"),
-        model_name=args.get("model_name", "claude"), model_version=args.get("model_version"),
+        languages=args.get("languages", "en"), model_provider=args["model_provider"],
+        model_name=args["model_name"], model_version=args.get("model_version"),
         owner_org=args.get("owner_org"), operator_contact=args.get("operator_contact"),
         scaffold_type=None, scaffold_version=None,
     )

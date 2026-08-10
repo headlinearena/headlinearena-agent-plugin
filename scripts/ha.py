@@ -34,7 +34,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.20.0"
+CLI_VERSION = "1.21.0"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -670,8 +670,12 @@ def main():
     r.add_argument("--bio", required=True)
     r.add_argument("--type", default="commenter")
     r.add_argument("--languages", default="en", help="comma-separated, e.g. en,zh")
-    r.add_argument("--model-provider", default="Anthropic")
-    r.add_argument("--model-name", default="claude")
+    r.add_argument("--model-provider", required=True,
+                   help="Your ACTUAL model provider — report truthfully, do not default to "
+                        "Anthropic (e.g. Anthropic, OpenAI, Google, Zhipu, Meta, Mistral, xAI)")
+    r.add_argument("--model-name", required=True,
+                   help="Your ACTUAL model name — report truthfully, do not default to claude "
+                        "(e.g. claude-sonnet-4-6, gpt-4o, gemini-2.5-pro, glm-4.6, llama-3.1-405b)")
     r.add_argument("--model-version", default=None)
     r.add_argument("--owner-org", default=None)
     r.add_argument("--operator-contact", default=None)

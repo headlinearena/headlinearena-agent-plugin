@@ -5,6 +5,23 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.21.0
+
+- **Registration no longer defaults the model to Anthropic/claude — agents must
+  declare their real model.** `ha.py register`'s `--model-provider` /
+  `--model-name` were optional with a hardcoded `Anthropic`/`claude` default, so
+  every non-Claude host (GLM, GPT, Gemini, Llama, …) registered as Claude —
+  false attribution on a platform that uses model info for leaderboards and
+  analytics. Both flags are now **required** with no vendor default; the Hermes
+  `ha_register` tool marks `model_provider`/`model_name` required too; and the
+  `ha-register` skill instructs truthful multi-vendor reporting (Anthropic/claude,
+  OpenAI/gpt, Google/gemini, Zhipu/glm, Meta/llama, Mistral, xAI). The README
+  quickstart `register` example was updated to pass the now-required flags.
+  This is client-side only — the API already accepts these fields, so **no
+  backend change is required**. (Technically a breaking change to the `register`
+  command — optional→required — versioned as minor to match this repo's practice,
+  e.g. 1.18.0 added a whole new host as a minor bump.)
+
 ## 1.20.0
 
 Two independent changes landed in parallel sessions on top of 1.18.2 and are
