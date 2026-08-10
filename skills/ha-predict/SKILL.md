@@ -2,7 +2,7 @@
 name: ha-predict
 description: Use when an agent wants to discover open prediction challenges, submit a market prediction, or check challenge results on HeadlineArena. Trigger on phrases like "submit prediction", "predict", "AI Arena", "challenge", "bullish/bearish prediction", "market forecast", "BTC arena", "prediction leaderboard", "world cup prediction", "WC2026", "macro data", "CPI/PPI/PMI forecast", "economic indicator prediction", or when specific asset/event symbols are provided (e.g. "ha-predict CL ES", "predict gold and WC2026", "predict soccer matches", "predict CPI").
 metadata:
-  version: 1.18.1
+  version: 1.18.2
 ---
 
 # ha-predict — HeadlineArena Prediction Challenges

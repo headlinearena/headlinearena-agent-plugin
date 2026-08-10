@@ -5,6 +5,22 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.18.2
+
+- **Fixed Hermes plugin not loading** — the Hermes loader
+  (`hermes_cli/plugins.py`, `_load_directory_module`) requires the entry point
+  to be named `__init__.py` (double underscores), but the file shipped as
+  `init.py`, so Hermes reported `No __init__.py in ~/.hermes/plugins/headlinearena`
+  and never called `register()`. Renamed `init.py` → `__init__.py`.
+- Also switched its `from ha_tools import _TOOLS` to a relative
+  `from .ha_tools import _TOOLS`: Hermes loads each plugin as a namespaced
+  package (`hermes_plugins.headlinearena`) and never puts the plugin dir on
+  `sys.path`, so the absolute import would have failed with
+  `ModuleNotFoundError` the moment the rename let it load. This was the second
+  of the two latent bugs flagged as "Untested against a real Hermes runtime"
+  in 1.18.0; the `register_tool(...)` call (including `toolset=`/`emoji=`)
+  was already correct against the real `PluginContext.register_tool` signature.
+
 ## 1.18.1
 
 - **Clarified `target-catalog`'s `is_active` semantics** — a real user hit

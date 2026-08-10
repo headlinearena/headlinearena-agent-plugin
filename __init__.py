@@ -8,7 +8,7 @@ and ha_tools.py are just the Hermes-shaped adapter around it.
 """
 from __future__ import annotations
 
-from ha_tools import _TOOLS
+from .ha_tools import _TOOLS
 
 
 def register(ctx) -> None:
