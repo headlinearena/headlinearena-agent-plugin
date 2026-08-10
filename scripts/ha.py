@@ -33,7 +33,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.26.4"
+CLI_VERSION = "1.26.5"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -121,9 +121,18 @@ def creds(required=False):
 
 
 def update_creds(**fields):
+    """Merge `fields` into the stored entry for the current origin.
+
+    A field explicitly passed as None IS written (e.g. `challenge=None` to
+    clear a resolved challenge, `token=None` on cmd_register to reset a stale
+    token) — this used to silently filter out None values, which meant
+    `challenge=None` in cmd_challenge_submit never actually cleared the key,
+    permanently tripping every `not entry.get("challenge")` guard downstream
+    (_sync_claim_status, cmd_status's scope/credits enrichment) for any agent
+    that ever went through the register->challenge->pass flow."""
     store = load_store()
     entry = store.setdefault(origin(), {})
-    entry.update({k: v for k, v in fields.items() if v is not None})
+    entry.update(fields)
     save_store(store)
     return entry
 

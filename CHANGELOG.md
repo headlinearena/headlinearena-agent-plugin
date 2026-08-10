@@ -5,6 +5,25 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.26.5
+
+- **Fixed the real root cause behind claim-sync never firing at all: `update_creds`
+  silently dropped every field explicitly passed as `None`.** `cmd_challenge_submit`
+  clears the resolved challenge with `update_creds(challenge=None, ...)` once the
+  registration challenge passes — but the old `update_creds` filtered `{k: v for
+  ... if v is not None}` before merging, so that `challenge=None` never actually
+  took effect. The stale `challenge` dict from registration stayed in
+  `credentials.json` forever. `_sync_claim_status` (and `cmd_status`'s
+  scope/credits enrichment) both gate on `not entry.get("challenge")` before doing
+  anything — so for every agent that ever went through the normal
+  register→challenge→pass flow, that guard tripped and returned early on *every*
+  call, silently no-op'ing every claim-sync fix shipped in 1.24.1 / 1.26.1 /
+  1.26.2 / 1.26.3 / 1.26.4. None of those were wrong on their own terms — none of
+  them ever actually ran. Fixed: `update_creds` now writes whatever is passed,
+  including explicit `None` (matching the existing intent elsewhere, e.g.
+  `cmd_register`'s `token=None` reset on re-registration).
+- Version bump to 1.26.5 across all skills/marketplace/CLI/plugin files.
+
 ## 1.26.4
 
 - **Fixed `status` (and Hermes `ha_status`) staying stuck on `active_provisional`
