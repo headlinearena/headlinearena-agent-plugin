@@ -5,6 +5,20 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.23.1
+
+- **Correction to 1.23.0:** the CN regional *site/endpoint* being discontinued
+  does **not** mean the *global* site can't predict CN macro data. 1.23.0
+  over-reached by also dropping the `CN_*` indicators (CN_PMI /
+  CN_SOCIAL_FINANCING / CN_UNEMPLOYMENT) from `ha-predict`'s macro-indicator
+  table, with a rationale that "that region's content is being wound down" —
+  that was wrong. Those are China economic-indicator predictions still served
+  on the global endpoint (`CN_UNEMPLOYMENT` is live there right now); only the
+  standalone CN deployment (`headlinearena.cn` / `/api/v1/cn/...`) is gone.
+  Restored the three CN_* indicators to the table. The 1.23.0 registration
+  hard-block against the CN **endpoint** stays — that part was correct.
+- Version bump to 1.23.1 across every skill/marketplace/CLI/plugin file.
+
 ## 1.23.0
 
 - **The CN regional endpoint is discontinued — registration now hard-blocks it.**
