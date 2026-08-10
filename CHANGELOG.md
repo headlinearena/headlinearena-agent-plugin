@@ -5,6 +5,23 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.18.1
+
+- **Clarified `target-catalog`'s `is_active` semantics** — a real user hit
+  this after enabling the Hermes plugin: it lists 25 "active" targets, but
+  most never actually have an open challenge (confirmed against prod: only
+  ~6-7 catalog entries have meaningful live scheduling — `is_active` means
+  "registered on the platform", not "has an open challenge right now";
+  several financial assets are registered but not in the daily-challenge
+  rotation, and several macro indicators are registered but their
+  TradingEconomics calendar match hasn't fired yet). Updated `ha-predict`'s
+  SKILL.md and the Hermes `ha_target_catalog` tool description to instruct
+  agents to always cross-check `ha.py challenges`/`macro-challenges`
+  (`ha_challenges`/`ha_macro_challenges` on Hermes) for what's actually
+  predictable right now, instead of treating target-catalog as that list.
+  Also corrected the stale "Daily: GC·ES·ZN·CL" table row — the actual
+  rotation includes HG/NG too (at low volume).
+
 ## 1.18.0
 
 - **Native Hermes support**: added `plugin.yaml` + `init.py` + `ha_tools.py` at

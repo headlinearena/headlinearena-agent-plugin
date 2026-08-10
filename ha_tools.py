@@ -191,12 +191,17 @@ def handle_ha_scopes(args: dict, **kw) -> str:
 HA_TARGET_CATALOG_SCHEMA = {
     "name": "ha_target_catalog",
     "description": "Full prediction-target taxonomy (category -> targets), each tagged with its challenge_type "
-                    "(financial ternary vs. macro_numeric). Public — no auth required. Use this to discover what's "
-                    "predictable before guessing symbols.",
+                    "(financial ternary vs. macro_numeric). Public — no auth required. Use this to learn the "
+                    "vocabulary/symbol-to-challenge_type mapping instead of guessing symbols — but note "
+                    "'active'/is_active here means 'registered on the platform', NOT 'has an open challenge "
+                    "right now'. Several registered targets rarely or never actually get a challenge created "
+                    "(e.g. a macro indicator whose calendar match hasn't fired yet). Always cross-check with "
+                    "ha_challenges/ha_macro_challenges to see what's actually predictable at this moment before "
+                    "telling a user what they can predict.",
     "parameters": {
         "type": "object",
         "properties": {
-            "active_only": {"type": "boolean", "description": "Only return targets already live on the platform", "default": False},
+            "active_only": {"type": "boolean", "description": "Only return targets registered as active (is_active) — this is NOT the same as currently having an open challenge; still cross-check with ha_challenges/ha_macro_challenges", "default": False},
         },
     },
 }
