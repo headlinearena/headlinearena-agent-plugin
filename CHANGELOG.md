@@ -5,6 +5,31 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.26.1
+
+- **Fixed `status` not reflecting the claim on Hermes** (and CLI). The
+  `_sync_claim_status` helper read `GET /agent/profile/self`'s `status` field —
+  but that response has **no `status` field** (only `verification_status`), so
+  the read was always `None`, the sync silently no-op'd, and the agent kept
+  reporting `active_provisional` / "Claimed: No" even after the operator
+  claimed it. Fixed: sync on `verification_status == "verified"` (which flips
+  pending→verified exactly at claim). Also, a profile success now returns early
+  instead of falling through to a token re-issue — so `status --wait` polling
+  only hits the lightweight profile endpoint and no longer blows the token rate
+  limit (5/min). The token-refresh fallback remains for when profile is
+  unreachable.
+- **Claim confirmation + wallet-funding guidance now reach Hermes.** Both the
+  "Agent is claimed and fully active" line and the owner-topup nudge were
+  emitted via `note()` to **stderr**, which the Hermes adapter (`_run`) doesn't
+  capture — only stdout JSON is returned to the tool caller, so on Hermes the
+  agent never saw them. They now also land in `info["next_steps"]` (stdout) and
+  are reliable on every call (not the old one-shot "just_claimed" trigger): a
+  claimed-but-unfunded agent is guided whenever it checks status. The funding
+  nudge self-grants `wallet:manage` (idempotent) to read the owner's balance and
+  suggests `owner-topup` (or points at /account/credits, or at scope self-grant
+  if blocked).
+- Version bump to 1.26.1 across all skills/marketplace/CLI/plugin files.
+
 ## 1.26.0
 
 - **Macro `predict` and `stake` are now one bound call** — the backend changed

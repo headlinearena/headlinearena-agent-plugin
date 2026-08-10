@@ -33,7 +33,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.26.0"
+CLI_VERSION = "1.26.1"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -399,23 +399,30 @@ def _sync_claim_status(entry):
     """Refresh the locally-cached agent status from the backend. The cache goes
     stale the moment the operator claims the agent, so `status` would otherwise
     keep reporting active_provisional / "Unclaimed" even after claim. Pull the
-    live status via GET /agent/profile/self (reuses the cached token — no extra
-    token issuance, safe to call often); if that's unavailable, fall back to
-    re-issuing the token (whose response also carries agent_status). Best-effort:
-    on any failure the cached entry is returned unchanged."""
+    claim signal from GET /agent/profile/self's `verification_status`
+    ("verified" == claimed) — it reuses the cached token, so it's safe to poll
+    often (used by --wait). Only if profile is unavailable do we fall back to
+    re-issuing the token (whose response carries the authoritative agent_status)
+    — NOT every call, or --wait polling would blow the token rate limit.
+    Best-effort: on failure the cached entry is returned unchanged."""
     if not (entry.get("agent_id") and entry.get("client_secret") and not entry.get("challenge")):
         return entry
-    if entry.get("status") == "active":
+    cur = entry.get("status")
+    if cur == "active":
         return entry  # already claimed — nothing to sync
     try:
         s, r = authed("GET", "/agent/profile/self")
-        if s == 200 and r.get("status"):
-            update_creds(status=r["status"])
-            return creds()
+        if s == 200:
+            # profile/self has no `status` field, but verification_status flips
+            # pending -> verified exactly when the operator claims the agent.
+            if r.get("verification_status") == "verified" and cur == "active_provisional":
+                update_creds(status="active")
+                return creds()
+            return entry  # profile ok, still provisional — don't fall through to a token call
     except HAFailure:
         pass
     try:
-        get_token(force=True)  # token response carries agent_status too
+        get_token(force=True)  # token response carries the authoritative agent_status
         return creds()
     except HAFailure:
         return entry
@@ -425,7 +432,6 @@ def cmd_status(args):
     entry = creds()
     if not entry:
         fail(f"No credentials stored for {origin()}. Run `ha.py register` first.")
-    was_active = entry.get("status") == "active"
     entry = _sync_claim_status(entry)
 
     if args.wait:
@@ -489,46 +495,68 @@ def cmd_status(args):
         s, r = authed("GET", "/agent/scopes")  # OAuth permission scopes granted
         if s == 200:
             info["granted_scopes"] = r.get("scopes", r) if isinstance(r, dict) else r
-    just_claimed = agent_status == "active" and not was_active
+    # Guidance lives in info["next_steps"] (stdout JSON) so non-CLI hosts like
+    # Hermes — which only see stdout, never stderr — also receive it. note()
+    # mirrors it for CLI users. Reliable on every call (not a one-shot): a
+    # claimed-but-unfunded agent is guided whenever it checks status.
+    next_steps = []
+    if agent_status == "active":
+        next_steps.append("Agent is claimed and fully active.")
+        if _credits_look_unfunded(info.get("credits")):
+            g = _wallet_setup_guidance(info.get("granted_scopes"))
+            if g:
+                next_steps.append(g)
+    elif agent_status == "active_provisional":
+        next_steps.append(
+            "Still unclaimed (provisional) — relay the claim_url + pairing_code to your "
+            "operator, or run `ha.py status --wait` to be notified the moment it's claimed."
+        )
+    if next_steps:
+        info["next_steps"] = next_steps
     out(info)
-    if just_claimed:
-        _nudge_owner_wallet_setup()
+    for s in next_steps:
+        note(s)
 
 
-def _nudge_owner_wallet_setup():
-    """Best-effort, one-shot prompt right after a claim is first detected:
-    check whether the human owner's account has a credit balance, and if so
-    surface the concrete follow-up commands (with sane defaults: 100% of the
-    balance, no per-predict cap) instead of leaving the operator to discover
-    owner-balance/owner-topup/wallet-policy on their own. Never raises —
-    a failure here must not turn a successful `status` call into an error."""
+def _credits_look_unfunded(credits):
+    """True if this agent's own credit balance looks empty/unknown, so wallet
+    funding guidance is worth showing. `credits` is whatever
+    /agent/credits/balance returned (a dict, an 'n/a' string, or None)."""
+    if isinstance(credits, dict):
+        bal = credits.get("available_balance", credits.get("balance", 0))
+        try:
+            return float(bal or 0) <= 0
+        except (TypeError, ValueError):
+            return True
+    return True  # missing or 'n/a' — guide rather than stay silent
+
+
+def _wallet_setup_guidance(granted_scopes):
+    """Return a short funding-guidance string for a claimed agent, or None.
+    Advisory only — does NOT auto-grant anything (wallet:manage moves credit,
+    so it must be an explicit opt-in the agent/owner chooses). If the agent
+    already holds wallet:manage, reads the owner's balance and suggests
+    owner-topup; otherwise just points at the self-grant. Never raises."""
+    have = isinstance(granted_scopes, list) and "wallet:manage" in granted_scopes
+    if not have:
+        return ("Wallet funding is opt-in: self-grant `wallet:manage` "
+                "(`ha.py scope --add wallet:manage`), then `ha.py owner-balance` "
+                "/ `ha.py owner-topup --amount <N>`.")
     try:
-        status, resp = authed("POST", "/agent/scopes", {"add": ["wallet:manage"]})
-        if status == 200:
-            get_token(force=True)
         status, resp = authed("GET", "/agent/owner/balance")
         if status != 200:
-            return
+            return None
         balance = resp.get("available_balance", 0) or 0
         currency = resp.get("currency", "CREDITS")
         if balance <= 0:
-            note(
-                "Claimed! Your operator's HeadlineArena account balance is 0, so there's "
-                "nothing yet to fund this agent's wallet with. Let them know they can add "
-                "credit at https://headlinearena.com/account/credits, then come back and run "
-                "`ha.py owner-balance` / `ha.py owner-topup --amount <N>`."
-            )
-            return
-        note(
-            f"Claimed! Your operator's account balance is {balance} {currency}. Ask them: "
-            "(1) fund this agent's wallet? (2) if yes, how much — suggest defaulting to 100% "
-            f"of the balance ({balance}); (3) cap on how much this agent's wallet may ever "
-            "hold, or leave uncapped. Then run e.g.:\n"
-            f"  ha.py owner-topup --amount {balance}\n"
-            "  ha.py wallet-policy --max-balance <N>   # optional, omit for no cap"
-        )
+            return ("Your operator's account balance is 0 — they can add credit at "
+                    "https://headlinearena.com/account/credits, then "
+                    "`ha.py owner-topup --amount <N>`.")
+        return (f"Your operator's balance is {balance} {currency}. Fund this agent's wallet: "
+                f"`ha.py owner-topup --amount {balance}` (confirm the amount with your operator; "
+                "optional cap: `ha.py wallet-policy --max-balance <N>`).")
     except HAFailure:
-        pass
+        return None
 
 
 def cmd_owner_balance(args):
