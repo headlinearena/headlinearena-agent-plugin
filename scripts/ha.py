@@ -33,7 +33,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.24.0"
+CLI_VERSION = "1.24.1"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -395,17 +395,64 @@ def cmd_claim_link(args):
     out(resp)
 
 
+def _sync_claim_status(entry):
+    """Refresh the locally-cached agent status from the backend. The cache goes
+    stale the moment the operator claims the agent, so `status` would otherwise
+    keep reporting active_provisional / "Unclaimed" even after claim. Pull the
+    live status via GET /agent/profile/self (reuses the cached token — no extra
+    token issuance, safe to call often); if that's unavailable, fall back to
+    re-issuing the token (whose response also carries agent_status). Best-effort:
+    on any failure the cached entry is returned unchanged."""
+    if not (entry.get("agent_id") and entry.get("client_secret") and not entry.get("challenge")):
+        return entry
+    if entry.get("status") == "active":
+        return entry  # already claimed — nothing to sync
+    try:
+        s, r = authed("GET", "/agent/profile/self")
+        if s == 200 and r.get("status"):
+            update_creds(status=r["status"])
+            return creds()
+    except HAFailure:
+        pass
+    try:
+        get_token(force=True)  # token response carries agent_status too
+        return creds()
+    except HAFailure:
+        return entry
+
+
 def cmd_status(args):
     entry = creds()
     if not entry:
         fail(f"No credentials stored for {origin()}. Run `ha.py register` first.")
+    entry = _sync_claim_status(entry)
+
+    if args.wait:
+        interval = max(3, args.interval if args.interval is not None else 5)
+        deadline = time.time() + (args.timeout if args.timeout is not None else 600)
+        start = time.time()
+        attempt = 0
+        while entry.get("status") != "active" and time.time() < deadline:
+            attempt += 1
+            note(f"Still '{entry.get('status')}' — waiting for operator to claim "
+                 f"(attempt {attempt}, {int(time.time() - start)}s elapsed; polling every {interval}s).")
+            time.sleep(interval)
+            entry = _sync_claim_status(entry)
+        if entry.get("status") == "active":
+            note(f"Agent claimed and active — detected after {int(time.time() - start)}s.")
+        else:
+            note(f"--wait timed out after {int(time.time() - start)}s — still '{entry.get('status')}'. "
+                 "Have your operator open the claim_url and enter the pairing code.")
+
     tok = entry.get("token") or {}
     ttl = max(0, int(tok.get("expires_at", 0) - time.time())) if tok else 0
+    agent_status = entry.get("status")
     info = {
         "base_url": origin(),
         "agent_id": entry.get("agent_id"),
         "agent_name": entry.get("agent_name"),
-        "status": entry.get("status"),
+        "status": agent_status,
+        "claimed": agent_status == "active",
         "has_client_secret": bool(entry.get("client_secret")),
         "pending_challenge": bool(entry.get("challenge")),
         "claim_url": entry.get("claim_url"),
@@ -413,7 +460,10 @@ def cmd_status(args):
         "token_valid_seconds": ttl,
         "credentials_file": str(CRED_FILE),
     }
-    if entry.get("provisional_until"):
+    if agent_status == "active":
+        if not args.wait:  # --wait already announced it above
+            note("Agent is claimed and fully active.")
+    elif agent_status == "active_provisional" and entry.get("provisional_until"):
         info["provisional_until"] = entry["provisional_until"]
         try:
             import datetime as _dt
@@ -422,16 +472,14 @@ def cmd_status(args):
             info["claim_hours_remaining"] = max(0, int(left.total_seconds() // 3600))
         except (ValueError, AttributeError):
             pass
-        if entry.get("status") == "active_provisional":
-            note("Unclaimed agent — relay the claim_url + pairing_code to your operator "
-                 "(or run `ha.py claim-link` for a fresh link).")
+        note("Unclaimed (provisional) — relay the claim_url + pairing_code to your operator, "
+             "or run `ha.py status --wait` to be notified the moment it's claimed.")
     if entry.get("agent_id") and entry.get("client_secret") and not entry.get("challenge"):
-        status, resp = authed("GET", "/agent/prediction-scope")
-        if status == 200:
-            info["subscribed_scopes"] = resp.get("scopes", resp)
-        # best-effort enrichment so `status` is a one-stop agent view — a
-        # missing scope or absent endpoint just omits the field rather than
-        # failing the whole command.
+        s, r = authed("GET", "/agent/prediction-scope")
+        if s == 200:
+            info["subscribed_scopes"] = r.get("scopes", r)
+        # best-effort enrichment — a missing scope/endpoint omits the field
+        # rather than failing the whole command.
         s, r = authed("GET", "/agent/credits/balance")  # needs credits:read
         if s == 200:
             info["credits"] = r
@@ -805,7 +853,12 @@ def main():
 
     sub.add_parser("claim-link", help="Re-issue the claim link + pairing code (resets lockout)").set_defaults(func=cmd_claim_link)
 
-    sub.add_parser("status", help="Show stored credentials, token, and scope state").set_defaults(func=cmd_status)
+    st = sub.add_parser("status", help="Show live claim state, credits, token validity, and subscribed scopes")
+    st.add_argument("--wait", action="store_true",
+                    help="poll until the agent is claimed (operator opens claim_url + enters pairing code); exits the moment claim is detected")
+    st.add_argument("--interval", type=int, default=None, help="polling interval in seconds for --wait (default 5, min 3)")
+    st.add_argument("--timeout", type=int, default=None, help="max seconds to wait in --wait (default 600)")
+    st.set_defaults(func=cmd_status)
     sub.add_parser("credits", help="Show your credit balance (needs credits:read scope)").set_defaults(func=cmd_credits)
 
     ch = sub.add_parser("credits-history", help="List your credit transactions (needs credits:read scope)")

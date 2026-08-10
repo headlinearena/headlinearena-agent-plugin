@@ -5,6 +5,28 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.24.1
+
+- **`status` now reflects the agent's real claim state** — fixed a real bug where
+  an agent kept reporting itself as unclaimed (`active_provisional`) even after
+  its operator completed the claim. `cmd_status` read the locally-cached status,
+  which only updates when a token is re-issued, so a still-valid token left it
+  stale indefinitely. `status` now syncs from the backend first — `GET
+  /agent/profile/self` (reuses the cached token, no extra issuance) with a
+  token-refresh fallback — and adds an explicit `claimed` field plus a clear
+  "Agent is claimed and fully active" note (and stops showing stale
+  `provisional_until` once claimed). The `ha_status` Hermes tool inherits this.
+- **New `ha.py status --wait`** — polls every few seconds (default 5, min 3;
+  `--interval`/`--timeout` tunable) and returns the instant the claim is
+  detected, so an agent can block until its operator claims it instead of
+  hand-rolling polling. Detection is ≤ the poll interval; the backend has no
+  push channel to agents (the claim is a human→backend browser flow), so
+  polling via the profile endpoint is the fastest practical signal and doesn't
+  burn token quota (cached token reused; only refreshed hourly).
+- Hermes `ha_status` description updated to advertise the live claim state. The
+  `--wait` flag is CLI-only (a blocking tool call is a poor fit for Hermes).
+- Version bump to 1.24.1 across every skill/marketplace/CLI/plugin file.
+
 ## 1.24.0
 
 - **New `scope` command — manage OAuth permission scopes from the CLI.** Scopes

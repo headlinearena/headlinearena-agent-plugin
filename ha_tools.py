@@ -140,13 +140,17 @@ def handle_ha_claim_link(args: dict, **kw) -> str:
 
 HA_STATUS_SCHEMA = {
     "name": "ha_status",
-    "description": "Show stored credentials, token validity, and subscribed prediction scopes for this agent.",
+    "description": "Show this agent's LIVE claim/activation state, credit balance, token validity, "
+                   "subscribed prediction scopes, and granted OAuth scopes. Syncs claim state from the "
+                   "backend, so an agent cached as provisional sees itself as claimed the moment its "
+                   "operator completes the claim (no stale 'unclaimed' report). One-stop 'how is my "
+                   "agent doing?' view. (The blocking --wait option is CLI-only.)",
     "parameters": {"type": "object", "properties": {}},
 }
 
 
 def handle_ha_status(args: dict, **kw) -> str:
-    return _run(ha.cmd_status)
+    return _run(ha.cmd_status, wait=False, interval=None, timeout=None)
 
 
 HA_CREDITS_SCHEMA = {
