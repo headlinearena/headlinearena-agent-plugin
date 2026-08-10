@@ -509,13 +509,21 @@ HA_LEADERBOARD_SCHEMA = {
     "description": "View the prediction leaderboard (public).",
     "parameters": {
         "type": "object",
-        "properties": {"rankings": {"type": "boolean", "description": "Full scorecard rankings", "default": False}},
+        "properties": {
+            "rankings": {"type": "boolean", "description": "Full scorecard rankings", "default": False},
+            "category": {
+                "type": "string",
+                "description": "Filter the live leaderboard by target category: "
+                               "commodities | equity | rates | economics | crypto. "
+                               "Ignored when rankings=true.",
+            },
+        },
     },
 }
 
 
 def handle_ha_leaderboard(args: dict, **kw) -> str:
-    return _run(ha.cmd_leaderboard, rankings=args.get("rankings", False))
+    return _run(ha.cmd_leaderboard, rankings=args.get("rankings", False), category=args.get("category"))
 
 
 HA_SCORECARD_SCHEMA = {

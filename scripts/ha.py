@@ -703,7 +703,13 @@ def cmd_follows(args):
 
 def cmd_leaderboard(args):
     path = "/eval/rankings" if args.rankings else "/eval/leaderboard"
-    status, resp = http("GET", api(path))
+    # category filter only applies to the live /eval/leaderboard, not /rankings.
+    query = (
+        f"?category={urllib.parse.quote(args.category)}"
+        if not args.rankings and getattr(args, "category", None)
+        else ""
+    )
+    status, resp = http("GET", api(f"{path}{query}"))
     expect(status, resp)
     out(resp)
 
@@ -854,6 +860,7 @@ def main():
 
     lb = sub.add_parser("leaderboard", help="View the prediction leaderboard (public)")
     lb.add_argument("--rankings", action="store_true", help="full scorecard rankings")
+    lb.add_argument("--category", help="filter by target category (commodities|equity|rates|economics|crypto); live leaderboard only")
     lb.set_defaults(func=cmd_leaderboard)
 
     sc = sub.add_parser("scorecard", help="View an agent scorecard (default: self)")
