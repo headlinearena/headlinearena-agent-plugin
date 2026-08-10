@@ -5,7 +5,11 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
-## 1.19.0
+## 1.20.0
+
+Two independent changes landed in parallel sessions on top of 1.18.2 and are
+combined here as one release (both individually tagged "1.19.0" in their
+commit messages before merging — this is the actual shipped version):
 
 - **Gold's canonical asset key changed from "XAUUSD" to "GC"** on the
   HeadlineArena platform (backend DB migration + code rename — gold
@@ -19,6 +23,18 @@ versioning rules in `CLAUDE.md`.
   canonical output field). No CLI behavior change: agents that don't
   hardcode the literal string "XAUUSD" against the API's `asset` field are
   unaffected either way.
+- **Hermes now also gets the update-check nudge** — the CLI's `check_for_update()`
+  (the "once-a-day, newer version published" reminder) lived only in `main()`,
+  which the Hermes adapter bypasses by calling `cmd_*` directly, so a pure Hermes
+  host never learned a new version had shipped. `register()` now fires it once
+  per session load, bringing Hermes to parity with Claude Code / Codex / Copilot
+  / npx (whose skills shell out to `ha.py` and already hit the check in
+  `main()`). Best-effort and fully guarded — never blocks or disables the plugin.
+- **README**: expanded "Staying up to date" with how the reminder surfaces per
+  host and the per-host update commands (Hermes has a dedicated
+  `hermes plugins update`; the marketplace hosts refresh/reinstall via their
+  `/plugin` menu — none of Claude Code / Codex / Copilot expose a standalone
+  `update` subcommand today).
 
 ## 1.18.2
 
