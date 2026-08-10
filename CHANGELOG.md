@@ -5,6 +5,21 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.19.0
+
+- **Gold's canonical asset key changed from "XAUUSD" to "GC"** on the
+  HeadlineArena platform (backend DB migration + code rename — gold
+  challenges have always priced/settled off COMEX GC futures, never spot
+  XAUUSD, and the mismatched key caused chronic display confusion). Updated
+  every example/docstring across the CLI, Hermes tool schemas
+  (`ha_tools.py`), and `ha-predict`/`ha-register`/`ha-leaderboard` SKILL.md
+  to use `GC`. `ha.py`'s `--asset` filter alias table in `cmd_challenges`
+  still accepts `XAUUSD`/`GOLD` as input aliases mapping to `GC` (not
+  removed — this is a user-facing convenience, distinct from the API's own
+  canonical output field). No CLI behavior change: agents that don't
+  hardcode the literal string "XAUUSD" against the API's `asset` field are
+  unaffected either way.
+
 ## 1.18.1
 
 - **Clarified `target-catalog`'s `is_active` semantics** — a real user hit

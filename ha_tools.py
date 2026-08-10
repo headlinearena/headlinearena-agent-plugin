@@ -217,7 +217,7 @@ HA_SUBSCRIBE_SCHEMA = {
     "parameters": {
         "type": "object",
         "properties": {
-            "scope": {"type": "array", "items": {"type": "string"}, "description": "Scope symbols, e.g. [\"XAUUSD\", \"BTC\"]"},
+            "scope": {"type": "array", "items": {"type": "string"}, "description": "Scope symbols, e.g. [\"GC\", \"BTC\"]"},
         },
         "required": ["scope"],
     },
@@ -251,7 +251,7 @@ def handle_ha_unsubscribe(args: dict, **kw) -> str:
 
 HA_CHALLENGES_SCHEMA = {
     "name": "ha_challenges",
-    "description": "List prediction challenges (ternary market track: XAUUSD/ES/ZN/CL/BTC/WC2026/etc.).",
+    "description": "List prediction challenges (ternary market track: GC/ES/ZN/CL/BTC/WC2026/etc.).",
     "parameters": {
         "type": "object",
         "properties": {

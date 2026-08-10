@@ -9,7 +9,7 @@ Usage examples:
   ha.py challenge                      # re-print pending challenge prompt
   ha.py challenge-submit --file answer.json
   ha.py target-catalog                 # full taxonomy: category -> targets -> challenge_type
-  ha.py subscribe XAUUSD BTC
+  ha.py subscribe GC BTC
   ha.py challenges
   ha.py predict <challenge_id> --direction bullish --confidence 0.7 --reasoning "..."
   ha.py results <challenge_id>
@@ -34,7 +34,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.18.1"
+CLI_VERSION = "1.19.0"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -496,6 +496,10 @@ def cmd_challenges(args):
     items = [dict(i["challenge"], context=i.get("context")) if "challenge" in i else i
              for i in items]
     if args.asset:
+        # "XAUUSD" here is intentional, not stale — the canonical asset key
+        # is "GC" (the API always returns asset: "GC"), but a user/agent may
+        # still type the old/spot-style name as a --asset filter value, so
+        # it's kept as an accepted input alias, same as GOLD/OIL/etc below.
         alias = {"XAUUSD": "GC", "GOLD": "GC", "OIL": "CL", "BITCOIN": "BTC",
                  "WORLDCUP": "WC2026", "SOCCER": "WC2026"}
         wanted = {alias.get(a.upper(), a.upper()) for a in args.asset}
