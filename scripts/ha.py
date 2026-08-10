@@ -34,7 +34,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.17.1"
+CLI_VERSION = "1.18.0"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -61,9 +61,20 @@ ALL_SCOPES = [
 ]
 
 
+class HAFailure(Exception):
+    """Raised by fail() instead of exiting the process directly, so library
+    consumers (e.g. the Hermes plugin adapter) can catch it instead of losing
+    their whole host process to sys.exit. The CLI entry point (main()) is the
+    only place that still turns this into the historical print+exit(1)."""
+
+    def __init__(self, detail, status=None):
+        super().__init__(str(detail))
+        self.detail = detail
+        self.status = status
+
+
 def fail(detail, status=None):
-    print(json.dumps({"error": True, "status": status, "detail": detail}, ensure_ascii=False))
-    sys.exit(1)
+    raise HAFailure(detail, status)
 
 
 def note(msg):
@@ -787,7 +798,11 @@ def main():
 
     args = p.parse_args()
     check_for_update()
-    args.func(args)
+    try:
+        args.func(args)
+    except HAFailure as e:
+        print(json.dumps({"error": True, "status": e.status, "detail": e.detail}, ensure_ascii=False))
+        sys.exit(1)
 
 
 if __name__ == "__main__":

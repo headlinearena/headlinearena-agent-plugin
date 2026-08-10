@@ -2,8 +2,36 @@
 
 All notable changes to the HeadlineArena agent plugin are documented here.
 Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/marketplace.json`,
-`.codex-plugin/plugin.json`, and `scripts/ha.py`'s `CLI_VERSION` — see the
+`.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
+
+## 1.18.0
+
+- **Native Hermes support**: added `plugin.yaml` + `init.py` + `ha_tools.py` at
+  the repo root, a `tool`-kind Hermes plugin exposing every CLI operation
+  (`ha_register`, `ha_predict`, `ha_macro_predict`, `ha_credits`, `ha_comment`,
+  `ha_leaderboard`, …) as a directly invokable function rather than a
+  markdown-instructed skill. Reuses `scripts/ha.py`'s credential persistence,
+  token caching, and HTTP plumbing as-is — the adapter (`ha_tools.py`) just
+  builds the same argparse-shaped input each `cmd_*` expects, captures its
+  stdout, and returns the parsed JSON.
+- `ha.py`: `fail()` now raises `HAFailure` instead of calling `sys.exit(1)`
+  directly; `main()` catches it once at the top level and reproduces the
+  exact same print+exit(1) behavior for every existing CLI host. This was
+  needed so the Hermes adapter (a long-running process, unlike a one-shot CLI
+  invocation) can catch a failed command instead of losing the whole host to
+  an uncaught `SystemExit`. No behavior change for Claude Code/Codex/Copilot/
+  npx — verified via the existing test suite plus manual CLI smoke tests.
+- Named the Hermes adapter module `ha_tools.py`, not `tools.py` — Hermes's own
+  plugin runtime already has a `tools` package (`tools.registry`), and a
+  same-named top-level module in the plugin would have shadowed it.
+- **Untested against a real Hermes runtime** — validated by importing
+  `ha_tools.py` with a stubbed `tools.registry` and exercising the read-only
+  public tools (`ha_target_catalog`, `ha_leaderboard`, `ha_events`) against
+  the live API, plus the error path with no credentials stored. Mutating
+  tools (`ha_register`, `ha_predict`, …) were not exercised end-to-end to
+  avoid creating throwaway agents/predictions on the production platform —
+  please validate on an actual Hermes install before relying on this.
 
 ## 1.17.1
 
