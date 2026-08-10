@@ -33,7 +33,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.26.3"
+CLI_VERSION = "1.26.4"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -413,30 +413,34 @@ def _sync_claim_status(entry, light=False):
     stale the moment the agent is claimed — by the operator OR by an admin — so
     `status` would otherwise keep reporting active_provisional / "Unclaimed".
 
-    The authoritative agent.status comes back on the token response
-    (`agent_status`). profile/self does NOT carry status, only
-    `verification_status` — and a manual/admin claim flips status WITHOUT
-    flipping verification_status, so verification_status alone is NOT a reliable
-    claim signal. On-demand status (light=False) therefore re-issues the token
-    to read the live status. `--wait` passes light=True to poll profile/self's
-    verification_status instead (reuses the cached token — the operator-browser
-    claim DOES flip it — so --wait doesn't blow the token rate limit).
-    Best-effort: on failure the cached entry is returned unchanged."""
+    profile/self carries no rate limit and its `verification_status` flips to
+    "verified" on a normal operator-browser claim, so it's tried FIRST on every
+    call (light or not) — this covers the common case for free. Only the
+    non-light (on-demand, not --wait) path falls back to re-issuing the token,
+    whose `agent_status` is the only signal that also catches an admin claim
+    (`POST /internal/agents/{id}/activate` sets agent.status WITHOUT touching
+    verification_status). That fallback is gated to non-light on purpose:
+    token.create is rate-limited to 5/min, and a plain `ha status` (or Hermes's
+    ha_status tool) used to force-refresh the token on every single call —
+    burning that budget fast. Once exhausted, the 429 was silently swallowed
+    here and status looked permanently stuck even minutes after a real claim,
+    with no error surfaced. Best-effort: on failure the cached entry is
+    returned unchanged."""
     if not (entry.get("agent_id") and entry.get("client_secret") and not entry.get("challenge")):
         return entry
     if entry.get("status") == "active":
         return entry  # already claimed — nothing to sync
+    try:
+        s, r = authed("GET", "/agent/profile/self")
+        if s == 200 and r.get("verification_status") == "verified":
+            update_creds(status="active")
+            return creds()
+    except HAFailure:
+        pass
     if light:
-        try:
-            s, r = authed("GET", "/agent/profile/self")
-            if s == 200 and r.get("verification_status") == "verified":
-                update_creds(status="active")
-                return creds()
-        except HAFailure:
-            pass
         return entry
     try:
-        get_token(force=True)  # authoritative agent_status on the token response
+        get_token(force=True)  # catches an admin claim profile/self can't see
         return creds()
     except HAFailure:
         return entry

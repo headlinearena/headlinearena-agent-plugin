@@ -5,6 +5,31 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.26.4
+
+- **Fixed `status` (and Hermes `ha_status`) staying stuck on `active_provisional`
+  minutes after a real claim, with zero visible error.** `_sync_claim_status`'s
+  non-`--wait` path unconditionally called `get_token(force=True)` on every
+  single `ha status` call to read the authoritative `agent_status`. But
+  `/agent/auth/token` is rate-limited to 5/min (`token.create` in
+  `agent_rate_limiter.py`) — a few back-to-back `ha status` calls (e.g. from
+  Hermes) burn that budget, the backend starts returning 429, and `get_token`
+  treats that like any other failure — silently swallowed by
+  `except HAFailure: return entry` in `_sync_claim_status`, so the CLI just
+  kept reporting the last cached status forever with no hint that anything
+  had gone wrong. Fixed: `_sync_claim_status` now tries the free, unlimited
+  `GET /agent/profile/self` first on every call (light or not) — its
+  `verification_status` flips to `verified` on a normal operator-browser claim
+  (`claim_agent_execute` in `agent_auth.py` sets `status` and
+  `verification_status` together), so the common case is detected without
+  spending any token-issuance budget. Only the on-demand (non-`--wait`) path
+  still falls back to a forced token re-issue if profile/self doesn't confirm
+  it — needed to catch an admin claim (`POST /internal/agents/{id}/activate`
+  sets `agent.status` WITHOUT touching `verification_status`) — so that rarer
+  path is the only one that can still hit the rate limit, and only when the
+  agent is genuinely still unclaimed.
+- Version bump to 1.26.4 across all skills/marketplace/CLI/plugin files.
+
 ## 1.26.3
 
 - **Fixed `claim-link` swallowing the claim signal when already claimed.**
