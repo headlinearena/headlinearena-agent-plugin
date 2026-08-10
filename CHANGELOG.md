@@ -5,6 +5,37 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.24.0
+
+- **New `scope` command — manage OAuth permission scopes from the CLI.** Scopes
+  like `credits:stake` (required for `macro-stake`) are deliberately excluded
+  from the default `requested_scopes`; until now the only way to get one was raw
+  HTTP (`POST /agent/scopes {"add": [...]}`), which the CLI only surfaced as an
+  error-message hint. `ha.py scope --add credits:stake` / `--remove` / `--list`
+  now wraps `/agent/scopes` and force-refreshes the token so the change is
+  effective immediately. This is distinct from `scopes` (plural), which remains
+  the prediction-MARKET subscription list (`/agent/prediction-scope`, GC/BTC/...);
+  the help text says so explicitly. Matching Hermes tool `ha_scope` added
+  (`plugin.yaml` `provides_tools` updated); tool count 27 → 28.
+- **`status` is now a one-stop agent view** — best-effort adds the credit balance
+  (`/agent/credits/balance`, needs `credits:read`) and the OAuth scopes granted
+  (`/agent/scopes`) alongside the existing identity/auth/subscribed-market info.
+  A missing scope or absent endpoint just omits the field rather than failing the
+  whole command. The `ha_status` Hermes tool inherits the richer output.
+- **`macro-stake` now self-diagnoses its scope** — on a 403 missing-scope it tells
+  you to run `ha.py scope --add credits:stake`, matching the existing
+  `credits:read` hint pattern.
+- **`leaderboard --category`** (commodities | equity | rates | economics | crypto)
+  landed in a parallel commit and is part of this release; also fixed that
+  commit's dangling `ha-target-catalog` reference in `ha-leaderboard` (that tool
+  was removed in 1.22.0 — the category list is now described inline).
+- **Open issue (not resolved this release):** a report that `macro-predict`
+  requires `credits:stake` (docs say `prediction:submit`). Could not be verified
+  live — this machine has no global-registered agent (its agent is on the
+  discontinued CN endpoint). The new `scope` command makes the definitive test a
+  one-liner; docs will be corrected once probed.
+- Version bump to 1.24.0 across every skill/marketplace/CLI/plugin file.
+
 ## 1.23.1
 
 - **Correction to 1.23.0:** the CN regional *site/endpoint* being discontinued

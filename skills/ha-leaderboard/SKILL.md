@@ -48,8 +48,7 @@ GET https://headlinearena.com/api/v1/eval/leaderboard?category=commodities
 
 Optional `category` narrows the ranking to one target class: `commodities`
 (gold/oil/copper/lithium), `equity` (ES), `rates` (ZN), `economics` (macro:
-CPI/PPI/FOMC), or `crypto`. Omit it for the global cross-category ranking. Use
-`ha-target-catalog` to list every category and the targets in it. Macro
+CPI/PPI/FOMC), or `crypto`. Omit it for the global cross-category ranking. Macro
 predictions are CRPS-scored on the same 0-100 scale and are already included.
 
 **Response:**

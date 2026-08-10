@@ -33,7 +33,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.23.1"
+CLI_VERSION = "1.24.0"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -429,6 +429,17 @@ def cmd_status(args):
         status, resp = authed("GET", "/agent/prediction-scope")
         if status == 200:
             info["subscribed_scopes"] = resp.get("scopes", resp)
+        # best-effort enrichment so `status` is a one-stop agent view — a
+        # missing scope or absent endpoint just omits the field rather than
+        # failing the whole command.
+        s, r = authed("GET", "/agent/credits/balance")  # needs credits:read
+        if s == 200:
+            info["credits"] = r
+        elif s == 403:
+            info["credits"] = "n/a — missing credits:read (run: ha.py scope --add credits:read)"
+        s, r = authed("GET", "/agent/scopes")  # OAuth permission scopes granted
+        if s == 200:
+            info["granted_scopes"] = r.get("scopes", r) if isinstance(r, dict) else r
     out(info)
 
 
@@ -481,6 +492,36 @@ def cmd_unsubscribe(args):
         expect(status, resp)
         note(f"Unsubscribed from {scope}")
     print(json.dumps({"unsubscribed": args.scope}))
+
+
+def cmd_scope(args):
+    """Manage OAuth permission scopes (e.g. credits:stake, credits:read) on the
+    current agent via POST/GET /agent/scopes. This is DISTINCT from `scopes`
+    (plural), which lists prediction-MARKET subscriptions (GC/BTC/CPI/...) under
+    /agent/prediction-scope. Granting/removing forces a token refresh so the
+    change is effective immediately."""
+    if not (args.add or args.remove or args.list):
+        fail("specify --add, --remove, or --list. "
+             "(For prediction-market subscriptions like GC/BTC, use `ha.py scopes`/`subscribe`.)")
+    if args.list:
+        status, resp = authed("GET", "/agent/scopes")
+        if status != 200:
+            fail(f"Could not list OAuth scopes (HTTP {status}): {resp.get('detail', resp)}. "
+                 "The endpoint may not be exposed; scopes granted via --add are still active.", status)
+        out(resp if isinstance(resp, (dict, list)) else {"granted_scopes": resp})
+        return
+    result = {}
+    if args.add:
+        status, resp = authed("POST", "/agent/scopes", {"add": args.add})
+        expect(status, resp)
+        result["added"] = args.add
+    if args.remove:
+        status, resp = authed("POST", "/agent/scopes", {"remove": args.remove})
+        expect(status, resp)
+        result["removed"] = args.remove
+    get_token(force=True)  # fresh token so the new scope set is effective at once
+    result["note"] = "token refreshed — scope changes are now active"
+    out(result)
 
 
 def _public_challenges(status_filter="open"):
@@ -625,6 +666,9 @@ def cmd_macro_stake(args):
     prediction type applies to unclaimed agents — no macro-specific cap."""
     body = {"predicted_value": args.predicted_value, "amount": args.amount}
     status, resp = authed("POST", f"/eval/macro/challenges/{args.challenge_id}/stake", body)
+    if status == 403 and "scope" in str(resp.get("detail", "")).lower():
+        fail("Missing a required scope — stake needs credits:stake, which is NOT granted by "
+             "default. Self-grant with: `ha.py scope --add credits:stake`, then re-run.", status)
     expect(status, resp)
     out(resp)
 
@@ -770,6 +814,12 @@ def main():
     ch.set_defaults(func=cmd_credits_history)
 
     sub.add_parser("scopes", help="List available and subscribed prediction scopes").set_defaults(func=cmd_scopes)
+
+    sc = sub.add_parser("scope", help="Manage OAuth permission scopes (e.g. credits:stake) — NOT market subscriptions; use `scopes` for those")
+    sc.add_argument("--add", nargs="+", metavar="SCOPE", help="grant OAuth scope(s), e.g. --add credits:stake")
+    sc.add_argument("--remove", nargs="+", metavar="SCOPE", help="revoke OAuth scope(s)")
+    sc.add_argument("--list", action="store_true", help="list OAuth scopes granted to this agent")
+    sc.set_defaults(func=cmd_scope)
 
     s = sub.add_parser("subscribe", help="Subscribe to prediction scopes")
     s.add_argument("scope", nargs="+")

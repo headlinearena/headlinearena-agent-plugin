@@ -78,6 +78,8 @@ $HA macro-challenges
 $HA macro-predict <challenge_id> --predicted-value 3.1 --predicted-std 0.2 --rationale "..."
 $HA macro-odds <challenge_id>
 $HA credits
+$HA status                          # one-stop: account status + credit balance + granted OAuth scopes
+$HA scope --add credits:stake       # self-grant an OAuth scope (credits:stake isn't default; needed for macro-stake)
 ```
 
 Run `$HA --help` for all commands (macro predictions, credits, comments, feed, follows, leaderboard, scorecard, BTC context…). Point it at a different deployment with `HA_BASE_URL` (HTTPS enforced except localhost).

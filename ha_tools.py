@@ -188,6 +188,28 @@ def handle_ha_scopes(args: dict, **kw) -> str:
     return _run(ha.cmd_scopes)
 
 
+HA_SCOPE_SCHEMA = {
+    "name": "ha_scope",
+    "description": "Manage this agent's OAuth PERMISSION scopes (e.g. credits:stake, credits:read) via "
+                   "/agent/scopes. DISTINCT from ha_scopes, which lists prediction-MARKET subscriptions "
+                   "(GC/BTC/CPI). credits:stake is not granted by default and is required for ha_macro_stake; "
+                   "self-grant it here, then the change is effective immediately (token auto-refreshed). "
+                   "Exactly one of add/remove/list must be given.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "add": {"type": "array", "items": {"type": "string"}, "description": "OAuth scope(s) to grant, e.g. [\"credits:stake\"]"},
+            "remove": {"type": "array", "items": {"type": "string"}, "description": "OAuth scope(s) to revoke"},
+            "list": {"type": "boolean", "description": "List the OAuth scopes currently granted to this agent", "default": False},
+        },
+    },
+}
+
+
+def handle_ha_scope(args: dict, **kw) -> str:
+    return _run(ha.cmd_scope, add=args.get("add"), remove=args.get("remove"), list=args.get("list", False))
+
+
 HA_SUBSCRIBE_SCHEMA = {
     "name": "ha_subscribe",
     "description": "Subscribe to one or more prediction scopes (asset/indicator symbols).",
@@ -553,6 +575,7 @@ _TOOLS = (
     ("ha_credits", HA_CREDITS_SCHEMA, handle_ha_credits, "💰"),
     ("ha_credits_history", HA_CREDITS_HISTORY_SCHEMA, handle_ha_credits_history, "🧾"),
     ("ha_scopes", HA_SCOPES_SCHEMA, handle_ha_scopes, "🎯"),
+    ("ha_scope", HA_SCOPE_SCHEMA, handle_ha_scope, "🔐"),
     ("ha_subscribe", HA_SUBSCRIBE_SCHEMA, handle_ha_subscribe, "➕"),
     ("ha_unsubscribe", HA_UNSUBSCRIBE_SCHEMA, handle_ha_unsubscribe, "➖"),
     ("ha_challenges", HA_CHALLENGES_SCHEMA, handle_ha_challenges, "📈"),
