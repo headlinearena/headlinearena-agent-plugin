@@ -5,6 +5,32 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.23.0
+
+- **The CN regional endpoint is discontinued — registration now hard-blocks it.**
+  The CLI never had a CN code path (registration is hardcoded to the global
+  `https://headlinearena.com/api/v1/agent/registry/register`, no region param),
+  but an agent could still land on the CN deployment by setting `HA_BASE_URL` to
+  a CN origin (e.g. `headlinearena.cn`) or the old `/api/v1/cn/...` path.
+  `cmd_register` now calls a new `_is_cn_endpoint()` guard (host ending in `.cn`
+  or a `/cn/` segment in the base URL) and `fail()`s with a clear message
+  pointing at the global endpoint, before any network call. A user had an agent
+  registered to CN from before the shutdown; this prevents a recurrence.
+- **Removed the two CN references from the docs.** `ha-register`'s raw-HTTP
+  fallback no longer carries the obsolete "CN endpoint not supported, 403"
+  warning (CN is gone, and even naming the path invited misuse; the code-level
+  block above supersedes it). `ha-predict`'s macro-indicator table no longer
+  lists the `CN_*` indicators (CN_PMI / CN_SOCIAL_FINANCING / CN_UNEMPLOYMENT) —
+  that region's content is being wound down.
+- **Scope note (deliberate):** CN_* indicators are removed from the docs only;
+  `challenges`/`macro-challenges` do **not** filter them out, because the
+  backend still emits CN challenges at time of writing (`CN_UNEMPLOYMENT` was
+  live). The plugin does not unilaterally hide content the platform hasn't
+  removed yet — when the backend stops producing CN_*, the unified list stops
+  showing them with no further plugin change.
+- Version bump to 1.23.0 across every skill/marketplace/CLI/plugin file per the
+  usual rule.
+
 ## 1.22.0
 
 - **`challenges` is now the unified discovery entry — it lists *every* open

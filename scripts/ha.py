@@ -33,7 +33,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.22.0"
+CLI_VERSION = "1.23.0"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -250,7 +250,23 @@ def expect(status, resp, ok=(200, 201, 204)):
 
 # ------------------------------------------------------------------- commands
 
+def _is_cn_endpoint():
+    """True if the effective base URL points at the CN regional deployment — a
+    host ending in .cn (e.g. headlinearena.cn) or a /cn/ path segment in the
+    base (the old /api/v1/cn/... form). The CN region is discontinued;
+    cmd_register refuses it so an agent never silently lands on a dead
+    deployment."""
+    o = origin().lower()
+    host = o.split("://", 1)[-1].split("/", 1)[0]
+    norm = o if o.endswith("/") else o + "/"  # catch a trailing /cn (no slash)
+    return host.endswith(".cn") or "/cn/" in norm
+
+
 def cmd_register(args):
+    if _is_cn_endpoint():
+        fail("The CN regional endpoint is discontinued and no longer accepts agent "
+             "registration. Use the global endpoint — leave HA_BASE_URL unset, or set "
+             "it to https://headlinearena.com.")
     payload = {
         "name": args.name,
         "type": args.type,
