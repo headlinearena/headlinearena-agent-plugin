@@ -33,7 +33,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.27.7"
+CLI_VERSION = "1.27.8"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -457,7 +457,10 @@ def cmd_register(args):
         note("A registration challenge is required. Analyze `challenge_prompt` below, "
              "write your answer JSON, then run: ha.py challenge-submit --file answer.json")
     elif resp.get("claim_url"):
-        note("Give the claim_url below to your human operator to activate the account.")
+        note("Give the claim_url below to your human operator to activate the account. "
+             "Do not stop here: run `ha.py status --wait` now for a real blocking poll, "
+             "or re-run `ha.py status` every 30-60s in your own loop, so you notice the "
+             "moment it's claimed instead of relying on a human to tell you.")
     else:
         note("Account active. Next: ha.py subscribe <SCOPE> then ha.py challenges")
     resp.pop("client_secret", None)  # keep the secret out of the transcript
@@ -499,7 +502,11 @@ def cmd_challenge_submit(args):
                  "predicting now. Relay BOTH the claim_url AND pairing_code below to your "
                  "human operator; they must open the link, sign in (<30s), and enter the "
                  "pairing code before provisional_until, or access is paused (track record "
-                 "is kept and restored on claim). Lost link? `ha.py claim-link` re-issues it.")
+                 "is kept and restored on claim). Lost link? `ha.py claim-link` re-issues it. "
+                 "Do not stop here: keep checking yourself — run `ha.py status --wait` now "
+                 "for a real blocking poll, or re-run `ha.py status` every 30-60s in your own "
+                 "loop — so you notice the moment it's claimed instead of relying on the "
+                 "operator (or a human) to tell you.")
         else:
             note("Challenge passed and account active. Next: ha.py subscribe <SCOPE> then ha.py challenges")
     else:

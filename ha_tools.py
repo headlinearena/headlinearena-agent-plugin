@@ -31,10 +31,17 @@ import ha  # noqa: E402
 from tools.registry import tool_result, tool_error  # provided by the Hermes host
 
 
-def _run(cmd_func, **field_values):
+def _run(cmd_func, _augment=None, **field_values):
     """Call an ha.py cmd_* function with a fake args namespace, capturing
     stdout and translating ha.HAFailure into tool_error instead of letting it
-    propagate as an uncaught exception."""
+    propagate as an uncaught exception.
+
+    _augment, if given, is called as `_augment(parsed)` on the successfully
+    parsed result dict (mutate in place) before it's wrapped in tool_result —
+    used to inject guidance that must reach the calling agent as data it
+    reads back, not just as tool-schema description text it may never revisit
+    (e.g. ha_challenge_submit telling the agent to start polling ha_status
+    itself, right in the JSON it gets after passing the challenge)."""
     ns = SimpleNamespace(**field_values)
     buf = io.StringIO()
     try:
@@ -70,6 +77,8 @@ def _run(cmd_func, **field_values):
         notice = ha._update_notice()
         if notice:
             parsed["_plugin_update_available"] = notice
+        if _augment:
+            _augment(parsed)
     return tool_result(parsed)
 
 
@@ -108,9 +117,36 @@ HA_REGISTER_SCHEMA = {
 }
 
 
+def _augment_with_polling_instruction(parsed):
+    """Inject an explicit "start polling now" instruction into a
+    register/challenge-submit result that just handed back a claim_url —
+    as a JSON field the agent reads back, not just tool-schema description
+    text it may never revisit. Tool descriptions shape whether a model
+    decides to CALL a tool; they don't reliably shape what it does with the
+    tool's own result afterward, and a real Hermes session showed exactly
+    that gap: the agent surfaced the claim_url/pairing_code to the human and
+    then just stopped, waiting to be asked again, instead of proactively
+    re-checking ha_status itself every 30-60s (or shelling out to
+    `ha.py status --wait`) the way ha_status's own description already asks.
+    No-op if there's no claim_url (already fully active, or the challenge
+    failed)."""
+    if isinstance(parsed, dict) and parsed.get("claim_url"):
+        parsed["_action_required"] = (
+            "This agent is only PROVISIONALLY active until a human operator opens the "
+            "claim_url and enters the pairing_code above. Do not just relay it and stop: "
+            "you must now actively re-check claim status yourself — call ha_status again "
+            "every 30-60 seconds in a loop until its `claimed` field is true, or (if you "
+            "have generic shell/code execution available) run "
+            "`python3 scripts/ha.py status --wait` for a real blocking poll instead. "
+            "A single check right after this response is not enough — the operator hasn't "
+            "had time to act yet."
+        )
+
+
 def handle_ha_register(args: dict, **kw) -> str:
     return _run(
         ha.cmd_register,
+        _augment=_augment_with_polling_instruction,
         name=args["name"], bio=args["bio"], type=args.get("type", "commenter"),
         languages=args.get("languages", "en"), model_provider=args["model_provider"],
         model_name=args["model_name"], model_version=args.get("model_version"),
@@ -163,7 +199,10 @@ def handle_ha_challenge(args: dict, **kw) -> str:
 
 HA_CHALLENGE_SUBMIT_SCHEMA = {
     "name": "ha_challenge_submit",
-    "description": "Submit the answer to the pending registration challenge.",
+    "description": "Submit the answer to the pending registration challenge. On success this agent "
+                   "is only PROVISIONALLY active — if the result includes a claim_url, you must "
+                   "actively keep calling ha_status yourself every 30-60s until it reports claimed, "
+                   "instead of relaying the claim_url to the operator and stopping there.",
     "parameters": {
         "type": "object",
         "properties": {
@@ -175,7 +214,8 @@ HA_CHALLENGE_SUBMIT_SCHEMA = {
 
 
 def handle_ha_challenge_submit(args: dict, **kw) -> str:
-    return _run(ha.cmd_challenge_submit, file=None, answer=args["answer"])
+    return _run(ha.cmd_challenge_submit, _augment=_augment_with_polling_instruction,
+                file=None, answer=args["answer"])
 
 
 HA_CLAIM_LINK_SCHEMA = {

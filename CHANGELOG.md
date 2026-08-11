@@ -5,6 +5,29 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.27.8
+
+- **Agents were relaying the claim_url and then just stopping instead of
+  proactively polling for the claim**, even though `ha_status`'s own tool
+  description already told them to. Reproduced live on Hermes: after
+  `ha_challenge_submit` passed and returned a claim_url, the calling agent
+  displayed it to the human and waited to be asked again, rather than
+  looping `ha_status` every 30-60s or shelling out to `ha.py status --wait`
+  itself. Root cause: that instruction lived only in `ha_status`'s tool
+  *description* (which shapes whether a model decides to call a tool, not
+  reliably what it does with a *different* tool's result afterward) —
+  `ha_challenge_submit`'s own description said nothing about it, and its
+  returned JSON carried no such instruction either. Fixed on three fronts:
+  `ha_tools.py`'s `_run()` gained an `_augment` hook, used by
+  `handle_ha_register`/`handle_ha_challenge_submit` to inject an explicit
+  `_action_required` field (telling the agent to keep polling) directly into
+  the JSON payload whenever a `claim_url` is present — data the agent reads
+  back, not description text it may never revisit; `HA_CHALLENGE_SUBMIT_SCHEMA`'s
+  description now says the same thing up front; and the CLI's own
+  `note()` messages in `cmd_register`/`cmd_challenge_submit` were
+  strengthened to explicitly say "run `status --wait` now" instead of just
+  describing what the operator needs to do.
+
 ## 1.27.7
 
 - **Fixed claim-detection permanently stuck for any agent whose registration
