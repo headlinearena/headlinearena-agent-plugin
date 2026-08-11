@@ -5,6 +5,35 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.27.7
+
+- **Fixed claim-detection permanently stuck for any agent whose registration
+  challenge was resolved out-of-band.** `_sync_claim_status` (the function
+  behind both `status --wait` and every plain `ha_status`/`ha.py status`
+  call) required `not entry.get("challenge")` before attempting *any* network
+  check. That local cache is only ever cleared by this CLI's own
+  `cmd_challenge_submit` or `get_token()` succeeding — so it goes permanently
+  stale the moment a challenge is resolved through any other channel, e.g. an
+  LLM agent with generic HTTP/code-execution capability POSTing straight to
+  the challenge's `submit_url` instead of calling `ha.py challenge-submit`.
+  Reproduced live on Hermes: an agent claimed for real in the browser kept
+  reporting `status: null, claimed: false` from `ha_status` with **zero**
+  network calls (0.0s response) and no error of any kind, because the guard
+  short-circuited before ever reaching the profile/self check — completely
+  indistinguishable from "genuinely still unclaimed." It only "fixed itself"
+  once an unrelated manual `ha.py token --force` call happened to write
+  `status="active"` into the same credentials.json as a side effect.
+  `_sync_claim_status` no longer gates on the challenge cache — a genuinely
+  still-pending agent just gets a normal 401/403 from profile/self, same as
+  any other not-yet-authenticated case. `get_token()` now also clears
+  `challenge=None` on every successful token issuance (proof the challenge
+  is behind us, since challenge_pending agents can never get a token), and
+  `_fetch_financial_challenges`'s equivalent guard (silently falling back to
+  the unauthenticated public challenge list) was relaxed the same way — its
+  existing `status != 200` fallback already covers a truly-pending agent.
+  Added `scripts/test_ha_claim_sync.py` (4 tests) covering both the stale-cache
+  case and the genuinely-still-pending case.
+
 ## 1.27.6
 
 - **Update-check nudge now actually reaches every Hermes tool, not just the CLI.**

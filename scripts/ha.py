@@ -33,7 +33,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.27.6"
+CLI_VERSION = "1.27.7"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -346,7 +346,19 @@ def get_token(force=False):
     update_creds(token={
         "access_token": resp["access_token"],
         "expires_at": int(time.time()) + int(resp.get("expires_in", 900)),
-    }, status=resp.get("agent_status"))
+    }, status=resp.get("agent_status"), challenge=None)
+    # A token was only ever issuable because the backend already considers the
+    # registration challenge resolved (challenge_pending agents get a 403
+    # above, before reaching this point) — so a successful response here is
+    # proof the locally-cached `challenge` dict (if any) is stale and safe to
+    # clear unconditionally. This matters because the challenge can be
+    # resolved through a path this CLI never sees — e.g. an agent with generic
+    # HTTP/code-execution capability POSTing straight to the challenge's
+    # `submit_url` instead of calling `ha.py challenge-submit` — in which case
+    # nothing else would ever clear it, permanently tripping every
+    # `not entry.get("challenge")` guard downstream (_sync_claim_status and
+    # cmd_status's scope/credits enrichment) even though the agent is fully
+    # active.
     if resp.get("claim_pending") and resp.get("claim_note"):
         note(resp["claim_note"])
     return resp["access_token"]
@@ -550,6 +562,20 @@ def _sync_claim_status(entry, light=False):
     it's tried FIRST on every call (light or not) and is sufficient on its
     own for `--wait` to detect all of them.
 
+    Deliberately does NOT gate on `not entry.get("challenge")` (a prior
+    version did): the locally-cached challenge dict is only cleared by this
+    CLI's own code paths (cmd_challenge_submit, get_token()) succeeding, so
+    it goes permanently stale for any agent whose challenge got resolved
+    out-of-band — e.g. an LLM agent with generic HTTP/code-execution
+    capability POSTing straight to the challenge's `submit_url` instead of
+    calling `ha.py challenge-submit`. Gating on it meant this whole function
+    returned the cached entry unchanged, instantly, with zero network calls
+    and zero error surfaced, for the rest of that agent's life — indistinguishable
+    from "still genuinely unclaimed" even after a real browser claim succeeded.
+    If an agent truly hasn't passed its challenge yet, profile/self below just
+    401s/403s like any other not-yet-authenticated case — same as every other
+    failure mode this function already handles.
+
     The non-light (on-demand, not --wait) path additionally falls back to
     re-issuing the token, which is still real load on token.create (5/min) —
     and it's the ONLY path taken while an agent is genuinely still unclaimed
@@ -560,14 +586,14 @@ def _sync_claim_status(entry, light=False):
     use `ha status --wait` for real polling (it uses the unlimited
     profile/self check exclusively). Best-effort throughout: on failure the
     cached entry is returned unchanged."""
-    if not (entry.get("agent_id") and entry.get("client_secret") and not entry.get("challenge")):
+    if not (entry.get("agent_id") and entry.get("client_secret")):
         return entry
     if entry.get("status") == "active":
         return entry  # already claimed — nothing to sync
     try:
         s, r = authed("GET", "/agent/profile/self")
         if s == 200 and r.get("verification_status") == "verified":
-            update_creds(status="active")
+            update_creds(status="active", challenge=None)
             return creds()
     except HAFailure as e:
         # A live check WAS attempted and failed — surface it, so "still
@@ -876,9 +902,15 @@ def _asset_matches(item, wanted_up):
 def _fetch_financial_challenges(args):
     """Financial ternary challenges (GC/ES/ZN/CL/BTC/WC2026/...). Uses the
     authenticated /eval/challenges/active view when logged in (your subscribed
-    scopes only), otherwise the public list."""
+    scopes only), otherwise the public list.
+
+    Deliberately does not gate on entry.get("challenge") — that local cache
+    can go permanently stale if the registration challenge was resolved
+    out-of-band (see _sync_claim_status's docstring), and the existing
+    status != 200 fallback below already covers a genuinely still-pending
+    agent (authed() 403s, falls back to public) just as safely."""
     entry = creds()
-    if args.public or not (entry.get("agent_id") and entry.get("client_secret")) or entry.get("challenge"):
+    if args.public or not (entry.get("agent_id") and entry.get("client_secret")):
         resp = _public_challenges(args.status)
     else:
         status, resp = authed("GET", "/eval/challenges/active")
