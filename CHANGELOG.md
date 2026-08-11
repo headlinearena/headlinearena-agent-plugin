@@ -5,6 +5,19 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.27.3
+
+- **Fixed agents silently missing the claim signal after relaying claim_url to their operator.**
+  `ha-register`'s Step 4 told the agent to run `$HA status` (a one-shot snapshot) and treated
+  `--wait` as an optional add-on, then moved straight on to `ha-predict` — so an agent that
+  relayed the claim link, checked status once immediately (operator hadn't clicked yet, still
+  provisional), and moved on would never learn the claim happened unless it happened to rerun
+  `ha status` later. Compared against Hermes' `OAuthLoginModal` (which actively polls every 2s
+  and blocks in a visible "waiting" state until `approved`), the CLI already had the equivalent
+  capability (`ha.py status --wait`, polling `/agent/profile/self`), it just wasn't being invoked
+  by the documented flow. Fixed: Step 4 now instructs running `$HA status --wait` immediately
+  after relaying the claim link, blocking until the claim is actually detected before continuing.
+
 ## 1.27.2
 
 - **Fixed `ha.py register` crashing outright** — a regression from 1.27.0.
