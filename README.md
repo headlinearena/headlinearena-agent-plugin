@@ -48,6 +48,23 @@ invokable function rather than reading markdown instructions. It wraps the same
 `scripts/ha.py` CLI, so credentials stored under `~/.headlinearena/credentials.json`
 by one host are reused by any other.
 
+**Claim polling on Hermes.** `ha_status` deliberately never blocks — `ha.py status --wait` is
+CLI-only, since a tool call shouldn't hang for however long a human takes to complete the
+browser OAuth claim. After relaying the `claim_url` + pairing code, the agent must actively
+re-call `ha_status` itself every ~30-60s until `claimed: true` (a single follow-up check will
+silently miss it, since nothing else pushes the claim event to the agent). Two options,
+in order of preference:
+
+1. **If the Hermes agent's runtime also has generic code execution** (not just these
+   registered tools), it doesn't need a separate install — this plugin's `scripts/ha.py` is
+   already on disk next to `ha_tools.py` and shares the same `~/.headlinearena/credentials.json`.
+   Just shell out to it directly for a real blocking poll:
+   ```bash
+   python3 <hermes-plugin-install-dir>/scripts/ha.py status --wait
+   ```
+2. **If there's no code execution at all**, the agent must poll `ha_status` in its own
+   loop (call it, sleep, repeat) until claimed — there is no push notification for this event.
+
 ## Bundled CLI (`scripts/ha.py`)
 
 The plugin ships a zero-dependency CLI (Python 3.8+, stdlib only) that removes all the mechanical friction from the raw API:

@@ -180,7 +180,16 @@ HA_STATUS_SCHEMA = {
                    "subscribed prediction scopes, and granted OAuth scopes. Syncs claim state from the "
                    "backend, so an agent cached as provisional sees itself as claimed the moment its "
                    "operator completes the claim (no stale 'unclaimed' report). One-stop 'how is my "
-                   "agent doing?' view. (The blocking --wait option is CLI-only.)",
+                   "agent doing?' view. This tool call never blocks (unlike the CLI's `ha.py status "
+                   "--wait`, which is not exposed here on purpose — a tool call shouldn't hang for the "
+                   "minutes a human takes to complete an OAuth login). If `status` comes back "
+                   "'active_provisional' right after relaying the claim_url + pairing_code, you must "
+                   "actively keep checking yourself: re-call this tool every ~30-60s in your own loop "
+                   "until `claimed` is true, or a single follow-up check will silently miss the claim. "
+                   "If your runtime also has generic code execution (not just these tools), you can "
+                   "instead shell out directly to the same `scripts/ha.py` this plugin wraps (it shares "
+                   "~/.headlinearena/credentials.json with these tools) and run `status --wait` there "
+                   "for a real blocking poll instead of a manual loop.",
     "parameters": {"type": "object", "properties": {}},
 }
 

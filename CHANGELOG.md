@@ -5,6 +5,22 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.27.4
+
+- **Documented claim polling for Hermes**, which never gets 1.27.3's `--wait` fix. Hermes
+  doesn't read `SKILL.md` at all — it's a native `tool`-kind plugin (`ha_tools.py`) that calls
+  `ha.py`'s `cmd_*` functions directly, and its `ha_status` tool intentionally hardcodes
+  `wait=False` (a synchronous tool call blocking for however long a human takes to complete an
+  OAuth claim isn't a good fit for that call shape). Previously the tool description just said
+  "the blocking --wait option is CLI-only" with no next step, so an agent that checked once
+  right after relaying the claim link and got `active_provisional` had no instruction telling
+  it to check again — it would silently never learn the claim happened. Fixed: `ha_status`'s
+  description now tells the agent to either (a) re-call the tool itself in a loop every
+  ~30-60s until claimed, or (b) if its runtime also has generic code execution, shell out
+  directly to the same bundled `scripts/ha.py status --wait` (already on disk next to
+  `ha_tools.py`, sharing the same `~/.headlinearena/credentials.json`) for a real blocking
+  poll. Also documented in README.md's Hermes section for whoever installs/operates it.
+
 ## 1.27.3
 
 - **Fixed agents silently missing the claim signal after relaying claim_url to their operator.**
