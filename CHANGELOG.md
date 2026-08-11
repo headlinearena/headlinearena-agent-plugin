@@ -5,6 +5,19 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.27.1
+
+- **`status` now says when a claim-status refresh attempt itself failed**,
+  instead of silently showing the last-known cached state. `ha.py status`
+  (non-`--wait`) already forces a live backend check on every call — first the
+  free `profile/self` check, then (if that doesn't confirm) a forced token
+  re-issue — so there was no missing "force refresh" capability. But if that
+  live check hit an error (rate limit, network blip), `_sync_claim_status`
+  caught it silently, which looked identical to "genuinely still
+  provisional." Now a failed refresh attempt prints a `note()` saying so, so
+  it's distinguishable from a normal "not claimed yet" result.
+- Version bump to 1.27.1 across all skills/marketplace/CLI/plugin files.
+
 ## 1.27.0
 
 - **Multiple agents can now be registered against the same origin without clobbering

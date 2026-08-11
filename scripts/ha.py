@@ -33,7 +33,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.27.0"
+CLI_VERSION = "1.27.1"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -541,14 +541,18 @@ def _sync_claim_status(entry, light=False):
         if s == 200 and r.get("verification_status") == "verified":
             update_creds(status="active")
             return creds()
-    except HAFailure:
-        pass
+    except HAFailure as e:
+        # A live check WAS attempted and failed — surface it, so "still
+        # provisional" (a normal, silent outcome above) isn't confused with
+        # "the refresh itself didn't happen" (rate limit / network error).
+        note(f"Claim-status check via profile/self failed ({e.detail}) — showing last-known status; try again shortly.")
     if light:
         return entry
     try:
         get_token(force=True)  # catches an admin claim profile/self can't see
         return creds()
-    except HAFailure:
+    except HAFailure as e:
+        note(f"Claim-status re-check via token refresh failed ({e.detail}) — showing last-known status; try again shortly.")
         return entry
 
 
