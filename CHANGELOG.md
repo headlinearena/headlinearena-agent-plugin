@@ -5,6 +5,22 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.27.5
+
+- **Fixed `--wait` never detecting a real claim, and made its polling visible.** Two backend
+  bugs meant `POST /agent/claim/{claim_token}` (the real browser claim_url + pairing_code flow)
+  could leave `agent.verification_status` stuck even though the human-visible claim succeeded:
+  (1) `claim_agent_execute`'s `already_active` guard skipped the `verification_status="verified"`
+  write whenever `agent.status` was already `"active"` from some other path; (2) the internal
+  `/internal/agents/{id}/activate` endpoint only ever set `status`, never `verification_status`,
+  which is the one field `ha.py status --wait` polls via `GET /agent/profile/self`. Both are
+  fixed on the backend. Separately, `note()` (the `→ ...` progress lines `--wait` prints every
+  poll) was missing `flush=True` — when `ha.py` runs through a subprocess/tool pipe (the normal
+  way a coding agent invokes it) rather than an interactive tty, Python block-buffers stderr, so
+  every "still waiting" message sat unseen in the buffer until the process exited instead of
+  showing up live. `--wait` now also prints an upfront "polling for claim" line (with the
+  claim_url) before the first sleep.
+
 ## 1.27.4
 
 - **Documented claim polling for Hermes**, which never gets 1.27.3's `--wait` fix. Hermes

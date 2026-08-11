@@ -33,7 +33,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.27.4"
+CLI_VERSION = "1.27.5"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -77,7 +77,13 @@ def fail(detail, status=None):
 
 
 def note(msg):
-    print(f"→ {msg}", file=sys.stderr)
+    # flush=True matters here: when ha.py runs through a subprocess/tool pipe
+    # (the normal way a coding agent invokes it) rather than an interactive
+    # tty, Python block-buffers stderr — without an explicit flush, --wait's
+    # per-poll "still waiting" messages would all sit in the buffer and only
+    # appear at once when the process exits, making the live polling status
+    # invisible to whoever is watching in real time.
+    print(f"→ {msg}", file=sys.stderr, flush=True)
 
 
 def origin():
@@ -527,22 +533,22 @@ def _sync_claim_status(entry, light=False):
     `status` would otherwise keep reporting active_provisional / "Unclaimed".
 
     profile/self carries no rate limit and its `verification_status` flips to
-    "verified" on a normal operator-browser claim, so it's tried FIRST on every
-    call (light or not) — this covers the common case for free. Only the
-    non-light (on-demand, not --wait) path falls back to re-issuing the token,
-    whose `agent_status` is the only signal that also catches an admin claim
-    (`POST /internal/agents/{id}/activate` sets agent.status WITHOUT touching
-    verification_status).
+    "verified" on any claim path — operator browser claim, admin-UI activate,
+    or the internal `/internal/agents/{id}/activate` API (all three now set
+    both `status` and `verification_status` together, as of 2026-08-11) — so
+    it's tried FIRST on every call (light or not) and is sufficient on its
+    own for `--wait` to detect all of them.
 
-    That fallback is still real load on token.create (5/min) — and it's the
-    ONLY path taken while an agent is genuinely still unclaimed (profile/self
-    never confirms in that case), which is exactly when someone impatiently
-    re-runs plain `ha status` over and over waiting for their operator to
-    claim it. _FORCE_SYNC_COOLDOWN throttles that fallback per agent so
-    repeated on-demand checks can't exhaust the limit themselves; use
-    `ha status --wait` for real polling (it uses the unlimited profile/self
-    check exclusively). Best-effort throughout: on failure the cached entry
-    is returned unchanged."""
+    The non-light (on-demand, not --wait) path additionally falls back to
+    re-issuing the token, which is still real load on token.create (5/min) —
+    and it's the ONLY path taken while an agent is genuinely still unclaimed
+    (profile/self never confirms in that case), which is exactly when someone
+    impatiently re-runs plain `ha status` over and over waiting for their
+    operator to claim it. _FORCE_SYNC_COOLDOWN throttles that fallback per
+    agent so repeated on-demand checks can't exhaust the limit themselves;
+    use `ha status --wait` for real polling (it uses the unlimited
+    profile/self check exclusively). Best-effort throughout: on failure the
+    cached entry is returned unchanged."""
     if not (entry.get("agent_id") and entry.get("client_secret") and not entry.get("challenge")):
         return entry
     if entry.get("status") == "active":
@@ -583,9 +589,13 @@ def cmd_status(args):
 
     if args.wait:
         interval = max(3, args.interval if args.interval is not None else 5)
-        deadline = time.time() + (args.timeout if args.timeout is not None else 600)
+        timeout = args.timeout if args.timeout is not None else 600
+        deadline = time.time() + timeout
         start = time.time()
         attempt = 0
+        if entry.get("status") != "active":
+            claim_hint = f" claim_url: {entry['claim_url']}" if entry.get("claim_url") else ""
+            note(f"Polling for claim — checking every {interval}s, up to {timeout}s total.{claim_hint}")
         while entry.get("status") != "active" and time.time() < deadline:
             attempt += 1
             note(f"Still '{entry.get('status')}' — waiting for operator to claim "
