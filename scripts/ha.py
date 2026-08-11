@@ -33,7 +33,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.27.5"
+CLI_VERSION = "1.27.6"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -246,19 +246,20 @@ def _version_tuple(v):
     return tuple(int(x) for x in re.findall(r"\d+", v)[:3])
 
 
-def check_for_update():
-    """Best-effort daily nudge if a newer plugin version is published.
-
-    Never raises and never touches stdout — agents may parse stdout as JSON,
-    so any nudge goes to stderr via note(), same as other informational
-    messages. Disable with HA_NO_UPDATE_CHECK=1 (e.g. offline sandboxes)."""
+def _update_notice():
+    """Best-effort: return a human-readable notice string if a newer plugin
+    version is published, else None. Never raises. Shared _meta.last_version_check
+    throttle state means every caller of this function — the CLI's
+    check_for_update() below AND ha_tools.py's Hermes adapter — pulls from the
+    same once-a-day gate rather than each maintaining (and hitting the network
+    for) its own. Disable with HA_NO_UPDATE_CHECK=1 (e.g. offline sandboxes)."""
     if os.environ.get("HA_NO_UPDATE_CHECK"):
-        return
+        return None
     try:
         store = load_store()
         meta = store.get("_meta", {})
         if time.time() - meta.get("last_version_check", 0) < VERSION_CHECK_INTERVAL_SECONDS:
-            return
+            return None
         req = urllib.request.Request(
             VERSION_CHECK_URL, headers={"User-Agent": f"headlinearena-cli/{CLI_VERSION}"}
         )
@@ -270,13 +271,23 @@ def check_for_update():
         save_store(store)
 
         if latest and _version_tuple(latest) > _version_tuple(CLI_VERSION):
-            note(
+            return (
                 f"A newer HeadlineArena plugin is available: v{latest} "
                 f"(you have v{CLI_VERSION}). See {CHANGELOG_URL} — "
                 f"reinstall via your plugin manager to update."
             )
     except Exception:
         pass  # never let the update check break a real command
+    return None
+
+
+def check_for_update():
+    """CLI entry point (main()) wrapper: never touches stdout — agents may
+    parse stdout as JSON, so the nudge (if any) goes to stderr via note(),
+    same as other informational messages."""
+    msg = _update_notice()
+    if msg:
+        note(msg)
 
 
 # ----------------------------------------------------------------------- http

@@ -5,6 +5,25 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.27.6
+
+- **Update-check nudge now actually reaches every Hermes tool, not just the CLI.**
+  `check_for_update()` only ever fired from `main()`, and separately
+  `__init__.py`'s `register()` fired it once at Hermes plugin load — but both
+  paths deliver the message via `note()` to stderr, which the Hermes adapter
+  never captures (only the JSON a tool call returns reaches the model). Worse,
+  the `register()`-time call silently consumed the once-a-day throttle,
+  meaning even a later fix that surfaced the message elsewhere would find the
+  window already spent. Split `check_for_update()` into `_update_notice()`
+  (returns the message string, or `None`, sharing the same
+  `_meta.last_version_check` throttle) and a thin CLI wrapper that keeps
+  printing it via `note()`. `ha_tools.py`'s `_run()` — the single chokepoint
+  every one of the ~35 `handle_ha_*` tools passes through — now calls
+  `_update_notice()` and, when set, adds it as a `_plugin_update_available`
+  field on the returned JSON, so any tool call (not just `ha_status`) can
+  surface it. Removed the now-redundant (and actively harmful) `register()`
+  call in `__init__.py`.
+
 ## 1.27.5
 
 - **Fixed `--wait` never detecting a real claim, and made its polling visible.** Two backend

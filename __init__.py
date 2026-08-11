@@ -21,15 +21,8 @@ def register(ctx) -> None:
             handler=handler,
             emoji=emoji,
         )
-    # The CLI's update-check nudge lives in main(), which this adapter bypasses
-    # by calling cmd_* directly — so a Hermes host would otherwise never learn a
-    # newer version shipped. Fire it once per session load to match the other
-    # hosts (whose skills shell out to ha.py and already hit the check in
-    # main()). `ha` is importable here because ha_tools put scripts/ on sys.path
-    # at import time; check_for_update() is best-effort and never raises — the
-    # guard is defense-in-depth since a crash here disables the whole plugin.
-    try:
-        import ha
-        ha.check_for_update()
-    except Exception:
-        pass
+    # Deliberately NOT calling ha.check_for_update() here: it only ever
+    # note()s to stderr, which Hermes never captures — the message would be
+    # silently lost while still consuming the once-a-day throttle, starving
+    # ha_tools.py's _run() (which surfaces the same notice as a visible JSON
+    # field on every tool call) for a full day. See ha_tools.py's _run().

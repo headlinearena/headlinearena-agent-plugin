@@ -113,5 +113,48 @@ class CheckForUpdateTests(unittest.TestCase):
         self.assertEqual(output, "")
 
 
+class UpdateNoticeTests(unittest.TestCase):
+    """_update_notice() is the shared primitive both check_for_update() (CLI,
+    note()/stderr) and ha_tools.py's _run() (Hermes, JSON field) call — it
+    must return the message as a plain string rather than only printing it,
+    since Hermes never sees stderr."""
+
+    def setUp(self):
+        self.disk = FakeDisk()
+        self._patches = [
+            mock.patch.object(ha, "load_store", self.disk.load),
+            mock.patch.object(ha, "save_store", self.disk.save),
+        ]
+        for p in self._patches:
+            p.start()
+        self.addCleanup(lambda: [p.stop() for p in self._patches])
+        os.environ.pop("HA_NO_UPDATE_CHECK", None)
+
+    def test_returns_message_string_when_newer(self):
+        with mock.patch("urllib.request.urlopen",
+                         return_value=FakeResponse({"metadata": {"version": "9.9.9"}})):
+            msg = ha._update_notice()
+        self.assertIsInstance(msg, str)
+        self.assertIn("9.9.9", msg)
+
+    def test_returns_none_when_current(self):
+        with mock.patch("urllib.request.urlopen",
+                         return_value=FakeResponse({"metadata": {"version": ha.CLI_VERSION}})):
+            self.assertIsNone(ha._update_notice())
+
+    def test_shares_throttle_with_check_for_update(self):
+        """A check_for_update() call (as __init__.py's register() used to
+        fire) must not starve a subsequent _update_notice() caller (ha_tools's
+        _run()) of its own network attempt for the rest of the day — they
+        share the same _meta.last_version_check gate by design, so whichever
+        one runs first legitimately consumes the window for both."""
+        with mock.patch("urllib.request.urlopen",
+                         return_value=FakeResponse({"metadata": {"version": "9.9.9"}})):
+            ha.check_for_update()
+        with mock.patch("urllib.request.urlopen") as mocked:
+            self.assertIsNone(ha._update_notice())
+            mocked.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -46,16 +46,31 @@ def _run(cmd_func, **field_values):
     except Exception as exc:  # never let a tool crash the Hermes host
         return tool_error(f"{type(exc).__name__}: {exc}")
     text = buf.getvalue().strip()
-    if not text:
-        return tool_result({"ok": True})
     # Most cmd_* print exactly one JSON value via out() (pretty-printed,
     # indent=2, so it spans multiple lines) — parse the whole buffer, not
     # just the last line. A few (e.g. cmd_token) print a bare non-JSON
     # string; that falls through to the {"raw": ...} fallback below.
-    try:
-        return tool_result(json.loads(text))
-    except json.JSONDecodeError:
-        return tool_result({"raw": text})
+    if not text:
+        parsed = {"ok": True}
+    else:
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            parsed = {"raw": text}
+    # ha.py's own update-check nudge (check_for_update) only fires from
+    # main(), which every handle_ha_* tool here bypasses by calling cmd_*
+    # directly — a pure Hermes host would otherwise never learn a new
+    # version shipped. _update_notice() shares the CLI's once-a-day throttle
+    # state, so wiring it in here (the one chokepoint all ~35 ha_* tools run
+    # through) brings every tool to parity with the CLI/skills hosts without
+    # hitting the network more than once a day total. Emitted as a JSON field
+    # rather than via note()/stderr, which Hermes never captures — only the
+    # dict returned here reaches the tool caller.
+    if isinstance(parsed, dict):
+        notice = ha._update_notice()
+        if notice:
+            parsed["_plugin_update_available"] = notice
+    return tool_result(parsed)
 
 
 def check_available() -> bool:
