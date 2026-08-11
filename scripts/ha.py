@@ -33,7 +33,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.27.1"
+CLI_VERSION = "1.27.2"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -165,13 +165,16 @@ def creds(required=False):
     return entry
 
 
-def update_creds(agent_id=None, set_default=False, **fields):
+def update_creds(target_agent_id=None, set_default=False, **fields):
     """Merge `fields` into the stored entry for the target agent (the
-    resolved current agent, unless `agent_id` names a different/new one —
-    used by cmd_register to create a fresh slot without disturbing whichever
-    agent is currently selected). `set_default` makes it the origin's default
-    agent (cmd_register always does, matching the historical one-agent
-    behavior: the most recently registered agent is what bare commands use).
+    resolved current agent, unless `target_agent_id` names a different/new
+    one — used by cmd_register to create a fresh slot without disturbing
+    whichever agent is currently selected). Deliberately NOT named `agent_id`
+    — `fields` commonly includes an `agent_id` key of its own (cmd_register's
+    entry dict), which would collide with a same-named routing parameter.
+    `set_default` makes it the origin's default agent (cmd_register always
+    does, matching the historical one-agent behavior: the most recently
+    registered agent is what bare commands use).
 
     A field explicitly passed as None IS written (e.g. `challenge=None` to
     clear a resolved challenge, `token=None` on cmd_register to reset a stale
@@ -183,7 +186,7 @@ def update_creds(agent_id=None, set_default=False, **fields):
     store = load_store()
     org = store.setdefault(origin(), {})
     org.setdefault("_agents", {})
-    key = agent_id or _resolve_agent_key(org)
+    key = target_agent_id or _resolve_agent_key(org)
     if key is None:
         fail("No agent selected — run `ha.py register` first, or pass --agent-id / set HA_AGENT_ID.")
     entry = org["_agents"].setdefault(key, {})
@@ -416,7 +419,7 @@ def cmd_register(args):
             "expires_in_minutes": resp.get("expires_in_minutes"),
             "max_attempts": resp.get("max_attempts"),
         }
-    update_creds(agent_id=resp["agent_id"], set_default=True, **entry)
+    update_creds(target_agent_id=resp["agent_id"], set_default=True, **entry)
     note(f"Credentials saved to {CRED_FILE} (client_secret is stored; you never need to handle it manually). "
          f"'{name}' ({resp['agent_id']}) is now the default agent for {origin()} — "
          "run `ha.py agents` to see all stored agents, `ha.py use <agent_id>` to switch, "
@@ -514,6 +517,10 @@ def cmd_claim_link(args):
     out(resp)
 
 
+_FORCE_SYNC_COOLDOWN = 15  # seconds between forced token re-checks for one agent — keeps
+                           # repeated on-demand `ha status` calls safely under token.create's 5/min
+
+
 def _sync_claim_status(entry, light=False):
     """Refresh the locally-cached agent status from the backend. The cache goes
     stale the moment the agent is claimed — by the operator OR by an admin — so
@@ -525,13 +532,17 @@ def _sync_claim_status(entry, light=False):
     non-light (on-demand, not --wait) path falls back to re-issuing the token,
     whose `agent_status` is the only signal that also catches an admin claim
     (`POST /internal/agents/{id}/activate` sets agent.status WITHOUT touching
-    verification_status). That fallback is gated to non-light on purpose:
-    token.create is rate-limited to 5/min, and a plain `ha status` (or Hermes's
-    ha_status tool) used to force-refresh the token on every single call —
-    burning that budget fast. Once exhausted, the 429 was silently swallowed
-    here and status looked permanently stuck even minutes after a real claim,
-    with no error surfaced. Best-effort: on failure the cached entry is
-    returned unchanged."""
+    verification_status).
+
+    That fallback is still real load on token.create (5/min) — and it's the
+    ONLY path taken while an agent is genuinely still unclaimed (profile/self
+    never confirms in that case), which is exactly when someone impatiently
+    re-runs plain `ha status` over and over waiting for their operator to
+    claim it. _FORCE_SYNC_COOLDOWN throttles that fallback per agent so
+    repeated on-demand checks can't exhaust the limit themselves; use
+    `ha status --wait` for real polling (it uses the unlimited profile/self
+    check exclusively). Best-effort throughout: on failure the cached entry
+    is returned unchanged."""
     if not (entry.get("agent_id") and entry.get("client_secret") and not entry.get("challenge")):
         return entry
     if entry.get("status") == "active":
@@ -548,10 +559,18 @@ def _sync_claim_status(entry, light=False):
         note(f"Claim-status check via profile/self failed ({e.detail}) — showing last-known status; try again shortly.")
     if light:
         return entry
+    last = entry.get("_last_force_sync") or 0
+    if time.time() - last < _FORCE_SYNC_COOLDOWN:
+        note(f"Skipping the token-based re-check (throttled — last one was under "
+             f"{_FORCE_SYNC_COOLDOWN}s ago; token.create is rate-limited to 5/min). "
+             "Showing last-known status; use `ha status --wait` to poll safely.")
+        return entry
     try:
         get_token(force=True)  # catches an admin claim profile/self can't see
+        update_creds(_last_force_sync=time.time())
         return creds()
     except HAFailure as e:
+        update_creds(_last_force_sync=time.time())
         note(f"Claim-status re-check via token refresh failed ({e.detail}) — showing last-known status; try again shortly.")
         return entry
 

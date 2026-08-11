@@ -5,6 +5,30 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.27.2
+
+- **Fixed `ha.py register` crashing outright** — a regression from 1.27.0.
+  `cmd_register` called `update_creds(agent_id=resp["agent_id"], set_default=True, **entry)`,
+  but `entry` (the dict being unpacked via `**entry`) also contains an `"agent_id"`
+  key — Python raises `TypeError: update_creds() got multiple values for keyword
+  argument 'agent_id'` on any duplicate keyword, so every registration failed
+  before writing anything to disk. Fixed by renaming `update_creds`'s slot-routing
+  parameter from `agent_id` to `target_agent_id`, which can't collide with a
+  same-named field in `**fields` (a case not covered by the 1.27.0 testing, which
+  exercised `update_creds` directly rather than through `cmd_register`'s exact
+  call shape).
+- **`status` throttles its forced token re-check per agent (15s cooldown)** —
+  1.26.4 made the common case (a real operator claim) free by checking
+  `profile/self` first, but the fallback path (forcing a fresh token to read
+  `agent_status`) is the ONLY path taken while an agent is genuinely still
+  unclaimed — exactly the scenario where someone impatiently re-runs plain
+  `ha status` waiting for their operator to claim it, still capable of
+  exhausting `token.create`'s 5/min limit through repeated on-demand checks
+  alone. Now a per-agent cooldown skips that fallback (with a `note()`
+  explaining why) if the last one ran under 15s ago; `ha status --wait` is
+  unaffected since it only ever uses the unlimited `profile/self` check.
+- Version bump to 1.27.2 across all skills/marketplace/CLI/plugin files.
+
 ## 1.27.1
 
 - **`status` now says when a claim-status refresh attempt itself failed**,
