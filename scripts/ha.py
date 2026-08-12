@@ -33,7 +33,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.27.8"
+CLI_VERSION = "1.27.9"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -119,7 +119,7 @@ _agent_override = None  # set from --agent-id by main()
 
 def load_store():
     try:
-        store = json.loads(CRED_FILE.read_text())
+        store = json.loads(CRED_FILE.read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError):
         return {}
     if _migrate_store(store):
@@ -148,8 +148,20 @@ def _migrate_store(store):
 
 def save_store(store):
     CRED_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
-    CRED_FILE.write_text(json.dumps(store, indent=2, ensure_ascii=False))
-    CRED_FILE.chmod(0o600)
+    # encoding="utf-8" is required, not cosmetic: Path.write_text()/read_text()
+    # without an explicit encoding fall back to locale.getpreferredencoding()
+    # (cp1252 on most Windows installs), which raises UnicodeEncodeError the
+    # moment the JSON contains a non-Latin-1 character — e.g. a Chinese
+    # challenge_prompt ("月" = 月). That crash happens AFTER registration
+    # already succeeded server-side (this is the last step, persisting the
+    # response including client_secret), so the agent is left registered on
+    # the backend with no local credentials.json entry and a possibly-lost
+    # client_secret.
+    CRED_FILE.write_text(json.dumps(store, indent=2, ensure_ascii=False), encoding="utf-8")
+    try:
+        CRED_FILE.chmod(0o600)
+    except (NotImplementedError, OSError):
+        pass  # Windows: chmod's POSIX bits are a best-effort no-op, not fatal
 
 
 def _resolve_agent_key(org):
@@ -481,7 +493,7 @@ def cmd_challenge_submit(args):
     if not challenge:
         fail("No pending challenge stored for this account.")
     if args.file:
-        answer = json.loads(Path(args.file).read_text())
+        answer = json.loads(Path(args.file).read_text(encoding="utf-8"))
     else:
         answer = json.loads(args.answer)
     if "answer" in answer and len(answer) == 1:  # accept both wrapped and bare forms

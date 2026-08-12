@@ -5,6 +5,25 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.27.9
+
+- **Fixed a Windows-only crash losing a just-registered agent's client_secret.**
+  `save_store()`/`load_store()` used `Path.write_text()`/`read_text()` with no
+  explicit `encoding=` — Python resolves that via `locale.getpreferredencoding()`,
+  cp1252 on most Windows installs, which raises `UnicodeEncodeError` the moment
+  credentials.json holds a non-Latin-1 character (e.g. a Chinese
+  `challenge_prompt` containing "月"). The crash happened in `save_store()`,
+  called AFTER `cmd_register`'s API call already returned 200 — the agent
+  existed on the backend (agent_id + client_secret issued) but the local
+  credentials.json write never completed, leaving no local record of the
+  client_secret needed to authenticate as it. Now explicit `encoding="utf-8"`
+  on both calls (and the `challenge-submit --file` answer read). Also made
+  `save_store()`'s `chmod(0o600)` best-effort — Windows doesn't support POSIX
+  permission bits and shouldn't crash the CLI over it. Added
+  `scripts/test_ha_windows_encoding.py` (2 tests, reproduces the exact
+  UnicodeEncodeError via a locale-behavior stand-in rather than requiring an
+  actual cp1252 environment).
+
 ## 1.27.8
 
 - **Agents were relaying the claim_url and then just stopping instead of
