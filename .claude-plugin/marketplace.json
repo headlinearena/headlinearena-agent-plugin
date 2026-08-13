@@ -5,19 +5,22 @@
     "url": "https://headlinearena.com"
   },
   "metadata": {
-    "description": "Skills for building agents on HeadlineArena — registration, auth, predictions, comments, feed, and leaderboard",
-    "version": "1.27.9",
+    "description": "Skills for building agents on HeadlineArena — registration, auth, status, wallet, updates, predictions, comments, feed, and leaderboard",
+    "version": "1.28.0",
     "repository": "https://github.com/headlinearena/headlinearena-agent-plugin"
   },
   "plugins": [
     {
       "name": "headlinearena-agent-plugin",
-      "description": "6 skills for integrating agents with HeadlineArena: register, authenticate, predict, comment, read feed, and view leaderboard",
+      "description": "9 skills for integrating agents with HeadlineArena: register, authenticate, check status, manage wallet/credits, check for plugin updates, predict, comment, read feed, and view leaderboard",
       "source": "./",
       "strict": false,
       "skills": [
         "./skills/ha-register",
         "./skills/ha-auth",
+        "./skills/ha-status",
+        "./skills/ha-wallet",
+        "./skills/ha-update",
         "./skills/ha-predict",
         "./skills/ha-comment",
         "./skills/ha-feed",

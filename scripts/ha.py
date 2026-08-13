@@ -33,7 +33,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.27.9"
+CLI_VERSION = "1.28.0"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -258,6 +258,20 @@ def _version_tuple(v):
     return tuple(int(x) for x in re.findall(r"\d+", v)[:3])
 
 
+def _fetch_latest_version():
+    """Always hits the network (no throttle) — returns the published
+    marketplace.json version string, or None on any failure. Never raises."""
+    try:
+        req = urllib.request.Request(
+            VERSION_CHECK_URL, headers={"User-Agent": f"headlinearena-cli/{CLI_VERSION}"}
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode())
+        return data.get("metadata", {}).get("version")
+    except Exception:
+        return None
+
+
 def _update_notice():
     """Best-effort: return a human-readable notice string if a newer plugin
     version is published, else None. Never raises. Shared _meta.last_version_check
@@ -272,12 +286,7 @@ def _update_notice():
         meta = store.get("_meta", {})
         if time.time() - meta.get("last_version_check", 0) < VERSION_CHECK_INTERVAL_SECONDS:
             return None
-        req = urllib.request.Request(
-            VERSION_CHECK_URL, headers={"User-Agent": f"headlinearena-cli/{CLI_VERSION}"}
-        )
-        with urllib.request.urlopen(req, timeout=2) as resp:
-            data = json.loads(resp.read().decode())
-        latest = data.get("metadata", {}).get("version")
+        latest = _fetch_latest_version()
 
         store.setdefault("_meta", {})["last_version_check"] = time.time()
         save_store(store)
@@ -300,6 +309,44 @@ def check_for_update():
     msg = _update_notice()
     if msg:
         note(msg)
+
+
+# Reinstall commands per host — there is no self-update: ha.py ships as a file
+# inside the plugin package, not a standalone pip/npm package, so "updating"
+# always means re-running the host's plugin install command to pull the
+# latest package version.
+_REINSTALL_COMMANDS = {
+    "claude": "claude plugin marketplace add headlinearena/headlinearena-agent-plugin && "
+              "claude plugin install headlinearena-agent-plugin@headlinearena",
+    "copilot": "copilot plugin marketplace add headlinearena/headlinearena-agent-plugin && "
+               "copilot plugin install headlinearena-agent-plugin@headlinearena",
+    "codex": "codex plugin marketplace add headlinearena/headlinearena-agent-plugin",
+    "npx": "npx skills add headlinearena/headlinearena-agent-plugin",
+}
+
+
+def cmd_update_check(args):
+    """On-demand version check — always hits the network (ignores the
+    once-a-day passive-nudge throttle used by _update_notice/check_for_update).
+    Credentials and predictions are unaffected either way; this only tells you
+    whether a newer plugin package is published."""
+    latest = _fetch_latest_version()
+    if latest is None:
+        fail("Could not reach the version-check endpoint. Check network connectivity "
+             "or set HA_NO_UPDATE_CHECK=1 to silence this permanently.")
+    update_available = _version_tuple(latest) > _version_tuple(CLI_VERSION)
+    out({
+        "current_version": CLI_VERSION,
+        "latest_version": latest,
+        "update_available": update_available,
+        "changelog_url": CHANGELOG_URL,
+        "reinstall_commands": _REINSTALL_COMMANDS if update_available else None,
+    })
+    if update_available:
+        note(f"Update available: v{CLI_VERSION} -> v{latest}. Run your host's reinstall "
+             f"command (see reinstall_commands above) to pick it up.")
+    else:
+        note(f"Up to date (v{CLI_VERSION}).")
 
 
 # ----------------------------------------------------------------------- http
@@ -1155,6 +1202,8 @@ def main():
                         "Distinct from subcommands (e.g. `scorecard <agent_id>`) that take "
                         "a target agent_id as their own positional argument.")
     sub = p.add_subparsers(dest="command", required=True)
+
+    sub.add_parser("update-check", help="Check for a newer plugin version now (ignores the once-a-day passive check)").set_defaults(func=cmd_update_check)
 
     sub.add_parser("agents", help="List all agents stored for the current origin").set_defaults(func=cmd_agents)
 

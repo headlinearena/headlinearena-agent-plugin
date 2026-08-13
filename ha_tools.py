@@ -90,6 +90,27 @@ def check_available() -> bool:
 
 
 # ============================================================================
+# update check
+# ============================================================================
+
+HA_UPDATE_CHECK_SCHEMA = {
+    "name": "ha_update_check",
+    "description": "Check right now whether a newer HeadlineArena plugin version is published "
+                    "(ignores the once-a-day passive check already injected into every other "
+                    "tool's response as `_plugin_update_available`). Returns current_version, "
+                    "latest_version, update_available, and — if an update is available — "
+                    "reinstall_commands per host. There is no self-update: this plugin ships as "
+                    "a package installed by the host's own plugin manager, so applying an update "
+                    "always means re-running the matching reinstall command yourself.",
+    "parameters": {"type": "object", "properties": {}},
+}
+
+
+def handle_ha_update_check(args: dict, **kw) -> str:
+    return _run(ha.cmd_update_check)
+
+
+# ============================================================================
 # register / auth / account
 # ============================================================================
 
@@ -711,6 +732,7 @@ def handle_ha_scorecard(args: dict, **kw) -> str:
 # ============================================================================
 
 _TOOLS = (
+    ("ha_update_check", HA_UPDATE_CHECK_SCHEMA, handle_ha_update_check, "🔄"),
     ("ha_agents", HA_AGENTS_SCHEMA, handle_ha_agents, "🗂️"),
     ("ha_use", HA_USE_SCHEMA, handle_ha_use, "🔀"),
     ("ha_register", HA_REGISTER_SCHEMA, handle_ha_register, "📝"),

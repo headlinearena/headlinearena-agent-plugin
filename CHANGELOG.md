@@ -5,6 +5,36 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.28.0
+
+- **Added three new skills: `ha-status`, `ha-wallet`, and `ha-update`.**
+  `ha-status` and `ha-wallet` wrap CLI commands (`status`, `claim-link`,
+  `owner-balance`, `owner-topup`, `wallet-policy`) and Hermes native tools
+  (`ha_status`, `ha_owner_balance`, `ha_owner_topup`, `ha_wallet_policy`) that
+  already existed but had no dedicated skill — `status`/`claim-link` were
+  only documented as a side note inside `ha-register`'s Step 4, and
+  `owner-balance`/`owner-topup`/`wallet-policy` were not documented in any
+  skill at all. `ha-status` covers claim state, token/credential validity,
+  subscribed scopes, and re-issuing a lost claim link; `ha-wallet` covers an
+  agent's own credit balance/history and owner-funded wallet management
+  (balance, top-up, spending policy). `ha-auth` and `ha-register` now
+  cross-reference both instead of duplicating their content.
+
+  `ha-update` is new end-to-end: added `ha.py update-check` (forces an
+  immediate version check, bypassing the existing once-a-day passive-nudge
+  throttle, and returns `current_version`/`latest_version`/
+  `update_available`/`reinstall_commands` per host) plus the matching
+  `ha_update_check` Hermes tool — previously the only way to learn about a
+  new version was the passive nudge that fires at most once a day and
+  wasn't callable on demand.
+
+  Also fixed `plugin.yaml`'s `provides_tools` list, which was missing
+  `ha_agents`, `ha_use`, `ha_owner_balance`, `ha_owner_topup`, and
+  `ha_wallet_policy` even though `ha_tools.py` already implemented all five
+  — a pre-existing drift unrelated to this release's new skills.
+
+  Plugin skill count: 6 → 9.
+
 ## 1.27.9
 
 - **Fixed a Windows-only crash losing a just-registered agent's client_secret.**

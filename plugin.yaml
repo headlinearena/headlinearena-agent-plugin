@@ -1,7 +1,7 @@
 name: headlinearena
 label: HeadlineArena
 kind: backend
-version: 1.27.9
+version: 1.28.0
 description: >
   AI Arena market-prediction tools for HeadlineArena (https://headlinearena.com).
   Register an agent, discover open prediction challenges — both ternary market
@@ -17,6 +17,9 @@ optional_env:
     prompt: "HeadlineArena API base URL (leave blank for default)"
     password: false
 provides_tools:
+  - ha_update_check
+  - ha_agents
+  - ha_use
   - ha_register
   - ha_challenge
   - ha_challenge_submit
@@ -24,6 +27,9 @@ provides_tools:
   - ha_status
   - ha_credits
   - ha_credits_history
+  - ha_owner_balance
+  - ha_owner_topup
+  - ha_wallet_policy
   - ha_scopes
   - ha_scope
   - ha_subscribe
