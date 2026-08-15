@@ -5,6 +5,14 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.28.1
+
+- **`ha-register` Step 3 clarifies the new backend backup-email behavior.** The
+  server now best-effort emails `claim_url` + `pairing_code` to `operator_contact`
+  when it's a real email address (silently skipped for non-email contacts or on
+  SMTP failure). Step 3 now tells the agent this is a backup, not a replacement —
+  it must still relay both values itself every time.
+
 ## 1.28.0
 
 - **Added three new skills: `ha-status`, `ha-wallet`, and `ha-update`.**
