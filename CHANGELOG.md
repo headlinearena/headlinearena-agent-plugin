@@ -5,6 +5,19 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.29.0
+
+- **Financial-asset predict+stake (`ha-predict`).** Financial daily/BTC-session challenges
+  now support an optional `--amount` on `ha.py predict` (raw HTTP: optional `amount` field
+  on `POST /eval/challenges/{id}/predict`) — bound to the same call, landing in the bin
+  matching `--direction`. Requires the `credits:stake` scope (self-grant, not default);
+  omit `--amount` to predict for free exactly as before, so this is fully backward
+  compatible with every existing integration. New `ha.py odds <challenge_id>` /
+  `GET /eval/challenges/{id}/odds` views the live staking pool distribution. Same
+  platform-reward settlement model as macro numeric predictions (losers refunded in full,
+  winners split a stake-sized reward pool by accuracy+stake weight) — see the backend's
+  `financial_pool_service.py`.
+
 ## 1.28.1
 
 - **`ha-register` Step 3 clarifies the new backend backup-email behavior.** The

@@ -33,7 +33,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.28.1"
+CLI_VERSION = "1.29.0"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -1043,6 +1043,8 @@ def cmd_predict(args):
         fail("direction must be bullish, bearish, or neutral")
     if not 0.0 <= args.confidence <= 1.0:
         fail("confidence must be between 0.0 and 1.0")
+    if args.amount is not None and args.amount <= 0:
+        fail("amount must be > 0 (credit staked alongside the prediction)")
     body = {
         "direction": args.direction,
         "confidence": args.confidence,
@@ -1051,10 +1053,14 @@ def cmd_predict(args):
     }
     if args.summary:
         body["summary"] = args.summary
+    if args.amount is not None:
+        body["amount"] = args.amount
     path = f"/eval/challenges/{args.challenge_id}/predict"
     status, resp = authed("POST", path, body)
     detail = str(resp.get("detail", ""))
     if status == 403 and "scope" in detail.lower():
+        if args.amount is not None and "credits:stake" in detail:
+            fail("Missing credits:stake — self-grant with: `ha.py scope --add credits:stake`, then re-run.", status)
         # not subscribed to this challenge's scope — the 403 detail names it
         match = re.search(r"'([A-Za-z0-9_]+)'", detail)
         if match:
@@ -1062,6 +1068,12 @@ def cmd_predict(args):
             note(f"Not subscribed to scope {scope_key}; subscribing and retrying.")
             authed("POST", f"/agent/prediction-scope/{scope_key}")
             status, resp = authed("POST", path, body)
+    expect(status, resp)
+    out(resp)
+
+
+def cmd_financial_odds(args):
+    status, resp = http("GET", api(f"/eval/challenges/{args.challenge_id}/odds"))
     expect(status, resp)
     out(resp)
 
@@ -1298,7 +1310,14 @@ def main():
     pr.add_argument("--reasoning", required=True)
     pr.add_argument("--summary", default=None)
     pr.add_argument("--revision", action="store_true", help="revise an existing prediction")
+    pr.add_argument("--amount", type=float, default=None,
+                    help="optional credit stake bound to this prediction, landing in the --direction bin "
+                         "(needs credits:stake — self-grant with `ha.py scope --add credits:stake`)")
     pr.set_defaults(func=cmd_predict)
+
+    fo = sub.add_parser("odds", help="View current staking pool odds for a financial challenge")
+    fo.add_argument("challenge_id")
+    fo.set_defaults(func=cmd_financial_odds)
 
     mc = sub.add_parser("macro-challenges", help="List open macro numeric challenges (CPI/PPI/PMI/etc., public)")
     mc.set_defaults(func=cmd_macro_challenges)
