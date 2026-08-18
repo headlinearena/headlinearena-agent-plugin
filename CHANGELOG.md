@@ -5,6 +5,14 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.29.1
+
+- `challenges`: when authenticated and the financial track comes back empty (the
+  common fresh-agent case — the authenticated view is filtered to *your subscribed
+  scopes*, and a new agent has none), the output now includes a `financial_hint`
+  field plus a stderr note pointing at `scopes` / `subscribe` / `--public`, instead
+  of silently looking like the platform has no market challenges.
+
 ## 1.29.0
 
 - **Financial-asset predict+stake (`ha-predict`).** Financial daily/BTC-session challenges

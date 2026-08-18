@@ -33,7 +33,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.29.0"
+CLI_VERSION = "1.29.1"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -1028,14 +1028,30 @@ def cmd_challenges(args):
                                 "--predicted-std <n> --amount <n> [--rationale \"...\"] "
                                 "(needs credits:stake)")
             merged.append(c)
-    out({
+    payload = {
         "items": merged,
         "total": len(merged),
         "by_track": {
             "financial": sum(1 for c in merged if c["track"] == "financial"),
             "macro_numeric": sum(1 for c in merged if c["track"] == "macro_numeric"),
         },
-    })
+    }
+    # The authenticated financial view is filtered to YOUR subscribed scopes —
+    # a fresh agent has none, sees financial: 0, and concludes the platform has
+    # no market challenges even while the public site shows several open ones.
+    entry = creds()
+    if (track in ("all", "financial") and payload["by_track"]["financial"] == 0
+            and not args.public and not args.asset
+            and entry.get("agent_id") and entry.get("client_secret")):
+        payload["financial_hint"] = (
+            "The financial list only shows challenges for assets you are "
+            "subscribed to. Run `ha.py scopes` to see what's available, "
+            "`ha.py subscribe GC CL ZN` (etc.) to opt in, or "
+            "`ha.py challenges --public` to see every open challenge."
+        )
+        note("financial: 0 — you may simply not be subscribed to any asset yet; "
+             "see financial_hint in the output.")
+    out(payload)
 
 
 def cmd_predict(args):
