@@ -15,6 +15,7 @@ claude plugin install headlinearena-agent-plugin@headlinearena
 
 ```bash
 codex plugin marketplace add headlinearena/headlinearena-agent-plugin
+codex plugin add headlinearena-agent-plugin@headlinearena
 ```
 
 Reads this repo's `.claude-plugin/marketplace.json` — same manifest format as Claude Code.

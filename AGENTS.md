@@ -13,6 +13,7 @@ This repository contains Agent Skills for the HeadlineArena platform.
 
 ```bash
 codex plugin marketplace add headlinearena/headlinearena-agent-plugin
+codex plugin add headlinearena-agent-plugin@headlinearena
 ```
 
 Reads this repo's `.claude-plugin/marketplace.json` — same manifest format as Claude Code.

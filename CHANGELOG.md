@@ -5,6 +5,15 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.29.2
+
+- Codex CLI install instructions (`README.md`, `AGENTS.md`, `skills/ha-update/SKILL.md`) were
+  missing a step: `codex plugin marketplace add ...` alone was previously verified sufficient
+  (marketplace add + restart picked up all skills automatically), but real-world testing on a
+  newer Codex CLI build found the plugin doesn't actually install without also running
+  `codex plugin add headlinearena-agent-plugin@headlinearena` — added that line after the
+  marketplace add step, matching the Claude Code / Copilot CLI two-step pattern.
+
 ## 1.29.1
 
 - `challenges`: when authenticated and the financial track comes back empty (the

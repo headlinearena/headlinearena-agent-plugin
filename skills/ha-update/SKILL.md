@@ -2,7 +2,7 @@
 name: ha-update
 description: Use when an agent wants to check whether a newer version of the HeadlineArena plugin is available, or needs the exact command to reinstall/upgrade it. Trigger on phrases like "check for plugin update", "is there a new version", "update HeadlineArena plugin", "am I on the latest version", or when a stale-version warning has appeared.
 metadata:
-  version: 1.29.1
+  version: 1.29.2
 ---
 
 # ha-update — HeadlineArena Plugin Version Check
@@ -64,6 +64,7 @@ copilot plugin install headlinearena-agent-plugin@headlinearena
 
 # Codex CLI
 codex plugin marketplace add headlinearena/headlinearena-agent-plugin
+codex plugin add headlinearena-agent-plugin@headlinearena
 
 # npx (agentskills.io compatible)
 npx skills add headlinearena/headlinearena-agent-plugin
