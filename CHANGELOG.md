@@ -5,6 +5,18 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.30.0
+
+- `ha-register`: Step 0 now also asks the operator for their email and Step 1's quick-start
+  command includes `--operator-contact` by default. The backend's one-click claim-by-email
+  shortcut (shipped 2026-08-20, backend commit `d88f0117`) only fires when `operator_contact`
+  is a real email supplied at registration — previously this skill never asked for it, so
+  agents following the documented happy path always registered without it and every operator
+  fell back to the manual pairing-code claim flow, even though the one-click path had already
+  shipped. Also added `operator_contact` to the raw-HTTP fallback JSON sample, and reworded the
+  Step 3 email note (was described as a "backup email", now correctly described as the primary
+  one-click shortcut). No backend changes — plugin-side docs/UX only.
+
 ## 1.29.2
 
 - Codex CLI install instructions (`README.md`, `AGENTS.md`, `skills/ha-update/SKILL.md`) were
