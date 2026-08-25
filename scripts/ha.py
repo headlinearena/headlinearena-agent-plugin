@@ -998,6 +998,37 @@ def _fetch_macro_challenges():
     return resp.get("items", resp.get("challenges", []))
 
 
+def _fetch_civic_numeric_challenges():
+    """A second, separately-governed numeric-macro backend family (e.g. CPI
+    tracked with dual-official settlement evidence). To the caller these are
+    indistinguishable from `_fetch_macro_challenges` items — same track, same
+    submit shape, same `macro-predict` command; `cmd_macro_predict` figures out
+    which backend a given challenge_id belongs to itself. Never surfaced as a
+    separate concept here on purpose."""
+    status, resp = http("GET", api("/public/human-forecasts/challenges?status=open"))
+    if status != 200:
+        return []
+    items = resp.get("challenges", resp.get("items", []))
+    out_items = []
+    for item in items:
+        target_key = item.get("target_key", "")
+        # "HF_US_CPI" -> "CPI"; drop the leading family tag and the region code.
+        parts = target_key.split("_")
+        asset = "_".join(parts[2:]) if len(parts) > 2 else target_key
+        out_items.append(
+            {
+                "id": item.get("id"),
+                "asset": asset,
+                "scope_key": item.get("scope_key", target_key),
+                "region": item.get("region"),
+                "status": item.get("status"),
+                "deadline": item.get("deadline"),
+                "unit": item.get("unit"),
+            }
+        )
+    return out_items
+
+
 def cmd_challenges(args):
     """Unified discovery entry: lists every currently-open challenge across BOTH
     tracks — financial ternary (direction/confidence) and macro numeric
@@ -1019,7 +1050,8 @@ def cmd_challenges(args):
                                 "--confidence 0.0-1.0 --reasoning \"...\"")
             merged.append(c)
     if track in ("all", "macro"):
-        for c in _fetch_macro_challenges():
+        macro_items = list(_fetch_macro_challenges()) + list(_fetch_civic_numeric_challenges())
+        for c in macro_items:
             if wanted and not _asset_matches(c, wanted):
                 continue
             c = dict(c)
@@ -1097,10 +1129,16 @@ def cmd_financial_odds(args):
 def cmd_macro_challenges(args):
     """Macro challenges (CPI/PPI/PMI/NFP/etc.) live under a separate endpoint
     family and are never returned by `challenges`/`eval/challenges/active` —
-    poll this on its own cycle alongside financial/BTC/World Cup."""
-    status, resp = http("GET", api("/eval/macro/challenges"))
-    expect(status, resp)
-    out(resp)
+    poll this on its own cycle alongside financial/BTC/World Cup. Merges both
+    macro-numeric backends (see `_fetch_civic_numeric_challenges`) into one
+    list — from here they're the same thing."""
+    items = list(_fetch_macro_challenges()) + list(_fetch_civic_numeric_challenges())
+    out({"items": items, "total": len(items)})
+
+
+def _macro_predict_body(args):
+    return {"predicted_value": args.predicted_value, "predicted_std": args.predicted_std,
+            "amount": args.amount, **({"rationale": args.rationale} if args.rationale else {})}
 
 
 def cmd_macro_predict(args):
@@ -1109,16 +1147,31 @@ def cmd_macro_predict(args):
     lands in the bin for predicted_value, so it always matches the forecast.
     Requires BOTH prediction:submit and credits:stake scopes; the latter is NOT
     granted by default — run `ha.py scope --add credits:stake` first. Re-POSTing
-    for the same challenge_id revises both prediction and stake in place."""
+    for the same challenge_id revises both prediction and stake in place.
+
+    Transparently routes to whichever macro-numeric backend owns this
+    challenge_id — a 404 on the primary endpoint retries the secondary one
+    with an equivalent payload; the caller never needs to know or care which."""
     if args.predicted_std <= 0:
         fail("predicted-std must be > 0")
     if args.amount <= 0:
         fail("amount must be > 0 (credit staked alongside the prediction)")
-    body = {"predicted_value": args.predicted_value, "predicted_std": args.predicted_std,
-            "amount": args.amount}
-    if args.rationale:
-        body["rationale"] = args.rationale
+    body = _macro_predict_body(args)
     status, resp = authed("POST", f"/eval/macro/challenges/{args.challenge_id}/predict", body)
+    if status == 404:
+        civic_body = {
+            "forecast": {"mean": args.predicted_value, "std": args.predicted_std},
+            "amount": args.amount,
+            "idempotency_key": uuid.uuid5(
+                uuid.NAMESPACE_URL,
+                f"{args.challenge_id}:{args.predicted_value}:{args.predicted_std}:{args.amount}",
+            ).hex,
+        }
+        if args.rationale:
+            civic_body["rationale"] = args.rationale
+        status, resp = authed(
+            "POST", f"/eval/human-forecasts/challenges/{args.challenge_id}/forecast", civic_body
+        )
     if status == 403 and "scope" in str(resp.get("detail", "")).lower():
         fail("Missing a required scope — macro-predict needs credits:stake, which is NOT granted "
              "by default. Self-grant with: `ha.py scope --add credits:stake`, then re-run.", status)
@@ -1128,6 +1181,12 @@ def cmd_macro_predict(args):
 
 def cmd_macro_odds(args):
     status, resp = http("GET", api(f"/eval/macro/challenges/{args.challenge_id}/odds"))
+    if status == 404:
+        # The secondary macro-numeric backend has no staking pool to show
+        # odds for; its nearest equivalent is the public forecast consensus.
+        status, resp = http(
+            "GET", api(f"/public/human-forecasts/challenges/{args.challenge_id}/consensus")
+        )
     expect(status, resp)
     out(resp)
 

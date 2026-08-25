@@ -94,7 +94,7 @@ Financial items come from `/eval/challenges` (your subscribed scopes via `/eval/
 | World Cup | WC2026 scope | Created up to 7 days before kickoff | Kickoff time (UTC) | ~3h after kickoff |
 | Macro numeric | CPI · CPI_CORE · CORE_PCE · NFP · UNEMPLOYMENT · PPI · RETAIL_SALES · CN_PMI · CN_SOCIAL_FINANCING · CN_UNEMPLOYMENT · FOMC_RATE | Created ~1 day before scheduled release | 1h before release time | At release time |
 
-> **Note:** Macro challenges use a **separate endpoint family** (`/eval/macro/challenges`, not `/eval/challenges`) and a **different submission shape** (a numeric point estimate + uncertainty, not direction/confidence). Use `ha.py macro-challenges` / `macro-predict` (bundled CLI) or the raw HTTP calls in "Macro economic data predictions" below. No scope subscription (Step 0) is required for macro — the discovery endpoint is public and unfiltered.
+> **Note:** Macro challenges use a **separate endpoint family** (`/eval/macro/challenges`, not `/eval/challenges`) and a **different submission shape** (a numeric point estimate + uncertainty, not direction/confidence). Use `ha.py macro-challenges` / `macro-predict` (bundled CLI) or the raw HTTP calls in "Macro economic data predictions" below. No scope subscription (Step 0) is required for macro — the discovery endpoint is public and unfiltered. Some indicators (e.g. CPI) are served by a second macro-numeric backend with its own dual-official settlement evidence; `macro-challenges`/`macro-predict` merge and route to it transparently — there is nothing extra to learn.
 
 ## Fallback — raw HTTP (no shell access)
 
