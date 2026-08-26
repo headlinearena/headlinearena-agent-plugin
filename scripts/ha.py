@@ -10,7 +10,9 @@ Usage examples:
   ha.py challenge-submit --file answer.json
   ha.py subscribe GC BTC
   ha.py challenges                     # unified: every open challenge (financial + macro), tagged by track
+  ha.py challenges --track civic       # Human Forecast/Civic Index only, full numeric+binary+ordered schema
   ha.py predict <challenge_id> --direction bullish --confidence 0.7 --reasoning "..."
+  ha.py forecast <challenge_id> --yes-probability 0.6 --amount 10   # binary_probability Civic Index target
   ha.py results <challenge_id>
   ha.py claim-link                     # re-issue claim link + pairing code
   ha.py status
@@ -33,7 +35,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.30.0"
+CLI_VERSION = "1.31.0"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -1004,13 +1006,23 @@ def _fetch_civic_numeric_challenges():
     indistinguishable from `_fetch_macro_challenges` items — same track, same
     submit shape, same `macro-predict` command; `cmd_macro_predict` figures out
     which backend a given challenge_id belongs to itself. Never surfaced as a
-    separate concept here on purpose."""
+    separate concept here on purpose.
+
+    ONLY returns outcome_shape=="numeric_distribution" items — that is the one
+    shape `macro-predict --predicted-value --predicted-std` can actually
+    submit correctly. A binary_probability or ordered_categorical_distribution
+    challenge (e.g. a Loan-Prime-Rate or initial-jobless-claims target) would
+    otherwise show up here with a submit_hint that's simply wrong for its
+    shape and 400 at submit time; those only appear via `_fetch_civic_challenges`
+    / `--track civic` / `forecast` now (see CHANGELOG 1.31.0)."""
     status, resp = http("GET", api("/public/human-forecasts/challenges?status=open"))
     if status != 200:
         return []
     items = resp.get("challenges", resp.get("items", []))
     out_items = []
     for item in items:
+        if item.get("outcome_shape", "numeric_distribution") != "numeric_distribution":
+            continue
         target_key = item.get("target_key", "")
         # "HF_US_CPI" -> "CPI"; drop the leading family tag and the region code.
         parts = target_key.split("_")
@@ -1029,15 +1041,70 @@ def _fetch_civic_numeric_challenges():
     return out_items
 
 
+def _civic_asset_from_target_key(target_key):
+    # "HF_US_CPI" -> "CPI"; drop the leading family tag and the region code.
+    parts = (target_key or "").split("_")
+    return "_".join(parts[2:]) if len(parts) > 2 else (target_key or "")
+
+
+def _fetch_civic_challenges():
+    """Full-fidelity Human Forecast / Civic Index discovery — unlike
+    `_fetch_civic_numeric_challenges` this keeps `outcome_shape`,
+    `forecast_schema`, `bins` and `target_key` so the caller (or `forecast`)
+    can submit the one correct payload shape for numeric, binary AND ordered
+    targets. New in 1.31.0 (plan: docs/superpowers/plans/2026-08-26-unified-
+    predictions-launch.md §6) — additive, does not change what
+    `_fetch_civic_numeric_challenges`/`macro-predict` do."""
+    status, resp = http("GET", api("/public/human-forecasts/challenges?status=open"))
+    if status != 200:
+        return []
+    items = resp.get("challenges", resp.get("items", []))
+    out_items = []
+    for item in items:
+        out_items.append(
+            {
+                "id": item.get("id"),
+                "asset": _civic_asset_from_target_key(item.get("target_key", "")),
+                "target_key": item.get("target_key"),
+                "scope_key": item.get("scope_key", item.get("target_key")),
+                "region": item.get("region"),
+                "status": item.get("status"),
+                "deadline": item.get("deadline"),
+                "unit": item.get("unit"),
+                "outcome_shape": item.get("outcome_shape"),
+                "forecast_schema": item.get("forecast_schema"),
+                "bins": item.get("bins"),
+            }
+        )
+    return out_items
+
+
+_FORECAST_SUBMIT_HINT = {
+    "numeric_distribution": "forecast <id> --mean <n> --std <n> --amount <n>",
+    "binary_probability": "forecast <id> --yes-probability <0..1> --amount <n>",
+    "ordered_categorical_distribution": "forecast <id> --probability CAT=P [--probability CAT=P ...] --amount <n>",
+}
+
+
 def cmd_challenges(args):
-    """Unified discovery entry: lists every currently-open challenge across BOTH
-    tracks — financial ternary (direction/confidence) and macro numeric
-    (value/uncertainty) — each tagged with `track` and `submit_hint` so the caller
-    routes straight to `predict` or `macro-predict`. `--track financial|macro`
-    narrows to one family; `--asset` filters both by symbol/indicator."""
+    """Unified discovery entry: lists every currently-open challenge across
+    tracks — financial ternary (direction/confidence), macro numeric
+    (value/uncertainty), and (opt-in via --track civic, new in 1.31.0) the
+    full-fidelity Human Forecast / Civic Index track covering numeric,
+    binary and ordered targets — each tagged with `track` and `submit_hint`
+    so the caller routes straight to `predict` / `macro-predict` /
+    `forecast`. `--track financial|macro|civic` narrows to one family;
+    `--asset` filters all by symbol/indicator.
+
+    `--track all` (the default) is UNCHANGED from 1.30.0 on purpose — it
+    still only surfaces numeric_distribution Human Forecast targets merged
+    into `macro_numeric` (see _fetch_civic_numeric_challenges), so existing
+    integrations see exactly what they saw before. Binary/ordered targets
+    (e.g. Loan Prime Rate, initial jobless claims) only appear via the new
+    `civic` track — ask for it explicitly to discover them."""
     track = (args.track or "all").lower()
-    if track not in ("all", "financial", "macro"):
-        fail("--track must be one of: all, financial, macro")
+    if track not in ("all", "financial", "macro", "civic"):
+        fail("--track must be one of: all, financial, macro, civic")
     wanted = {_ASSET_ALIASES.get(a.upper(), a.upper()) for a in args.asset} if args.asset else None
     merged = []
     if track in ("all", "financial"):
@@ -1060,12 +1127,25 @@ def cmd_challenges(args):
                                 "--predicted-std <n> --amount <n> [--rationale \"...\"] "
                                 "(needs credits:stake)")
             merged.append(c)
+    if track == "civic":
+        for c in _fetch_civic_challenges():
+            if wanted and not _asset_matches(c, wanted):
+                continue
+            c = dict(c)
+            c["track"] = "civic_forecast"
+            shape = c.get("outcome_shape")
+            c["submit_hint"] = (
+                _FORECAST_SUBMIT_HINT.get(shape, "forecast <id> --amount <n>")
+                + " (needs credits:stake)"
+            )
+            merged.append(c)
     payload = {
         "items": merged,
         "total": len(merged),
         "by_track": {
             "financial": sum(1 for c in merged if c["track"] == "financial"),
             "macro_numeric": sum(1 for c in merged if c["track"] == "macro_numeric"),
+            "civic_forecast": sum(1 for c in merged if c["track"] == "civic_forecast"),
         },
     }
     # The authenticated financial view is filtered to YOUR subscribed scopes —
@@ -1174,6 +1254,109 @@ def cmd_macro_predict(args):
         )
     if status == 403 and "scope" in str(resp.get("detail", "")).lower():
         fail("Missing a required scope — macro-predict needs credits:stake, which is NOT granted "
+             "by default. Self-grant with: `ha.py scope --add credits:stake`, then re-run.", status)
+    if status == 400:
+        detail = str(resp.get("detail", "")).lower()
+        if "yes_probability" in detail or "probabilities" in detail:
+            fail(
+                "This challenge is not numeric — macro-predict only supports "
+                "outcome_shape=numeric_distribution (mean/std). Use "
+                "`ha.py forecast <id> ...` instead (run `ha.py challenges --track civic` "
+                "to see the exact flags for this challenge_id).",
+                status,
+            )
+    expect(status, resp)
+    out(resp)
+
+
+def _reject_client_bin(args):
+    if getattr(args, "bin", None) is not None or getattr(args, "bin_label", None) is not None:
+        fail(
+            "The server maps your forecast statistic to exactly one frozen bin itself — "
+            "clients cannot choose or split bins. Pass --mean/--std, --yes-probability, "
+            "or --probability instead of --bin/--bin-label."
+        )
+
+
+def _build_forecast_payload(shape, args, challenge):
+    schema = challenge.get("forecast_schema")
+    if shape == "numeric_distribution":
+        if args.mean is None or args.std is None:
+            fail(f"This challenge is numeric_distribution — pass --mean and --std (schema: {schema})")
+        if args.std <= 0:
+            fail("--std must be > 0")
+        return {"mean": args.mean, "std": args.std}
+    if shape == "binary_probability":
+        if args.yes_probability is None:
+            fail(f"This challenge is binary_probability — pass --yes-probability (schema: {schema})")
+        if not 0.0 <= args.yes_probability <= 1.0:
+            fail("--yes-probability must be between 0 and 1")
+        return {"yes_probability": args.yes_probability}
+    if shape == "ordered_categorical_distribution":
+        categories = [b["category"] for b in (challenge.get("bins") or []) if "category" in b]
+        if not args.probability:
+            fail(
+                f"This challenge is ordered_categorical_distribution — pass --probability "
+                f"CAT=VALUE once per category {categories} (schema: {schema})"
+            )
+        probs = {}
+        for item in args.probability:
+            if "=" not in item:
+                fail(f"--probability must be CATEGORY=VALUE, got {item!r}")
+            cat, _, val = item.partition("=")
+            try:
+                probs[cat] = float(val)
+            except ValueError:
+                fail(f"--probability value must be a number, got {item!r}")
+        if categories and set(probs) != set(categories):
+            fail(f"--probability categories {sorted(probs)} do not match the frozen set {categories}")
+        return {"probabilities": probs}
+    fail(
+        f"Unrecognized outcome_shape {shape!r} for this challenge — this plugin version may be "
+        f"older than the backend's contract. Run `ha.py update-check`."
+    )
+
+
+def cmd_forecast(args):
+    """Submit a numeric / binary / ordered forecast to a Human Forecast
+    (Civic Index) challenge — official-statistics targets like CPI,
+    unemployment, Loan Prime Rate, initial jobless claims. New in 1.31.0:
+    unlike `macro-predict` (numeric-only, kept for backward compatibility),
+    this discovers the challenge's frozen `outcome_shape` first via the
+    public detail endpoint and only accepts the one correct payload shape
+    for it — the server maps your statistic to a bin itself, so `--bin`/
+    `--bin-label` are rejected outright, never silently accepted.
+
+    Requires BOTH prediction:submit and credits:stake scopes (credits:stake
+    is NOT granted by default — run `ha.py scope --add credits:stake`
+    first). Re-running for the same challenge_id revises both the forecast
+    and the stake in place (needs --expected-revision once you have one, to
+    avoid clobbering a concurrent revision)."""
+    _reject_client_bin(args)
+    if args.amount <= 0:
+        fail("amount must be > 0 (credit staked alongside the forecast)")
+    status, resp = http("GET", api(f"/public/human-forecasts/challenges/{args.challenge_id}"))
+    expect(status, resp)
+    challenge = resp.get("challenge", resp)
+    shape = challenge.get("outcome_shape")
+    forecast = _build_forecast_payload(shape, args, challenge)
+    body = {
+        "forecast": forecast,
+        "amount": args.amount,
+        "idempotency_key": args.idempotency_key or uuid.uuid5(
+            uuid.NAMESPACE_URL,
+            f"{args.challenge_id}:{json.dumps(forecast, sort_keys=True)}:{args.amount}",
+        ).hex,
+    }
+    if args.rationale:
+        body["rationale"] = args.rationale
+    if args.expected_revision is not None:
+        body["expected_revision"] = args.expected_revision
+    status, resp = authed(
+        "POST", f"/eval/human-forecasts/challenges/{args.challenge_id}/forecast", body
+    )
+    if status == 403 and "scope" in str(resp.get("detail", "")).lower():
+        fail("Missing a required scope — forecast needs credits:stake, which is NOT granted "
              "by default. Self-grant with: `ha.py scope --add credits:stake`, then re-run.", status)
     expect(status, resp)
     out(resp)
@@ -1370,10 +1553,12 @@ def main():
     u.add_argument("scope", nargs="+")
     u.set_defaults(func=cmd_unsubscribe)
 
-    c = sub.add_parser("challenges", help="List open prediction challenges (unified: financial + macro)")
+    c = sub.add_parser("challenges", help="List open prediction challenges (unified: financial + macro + civic)")
     c.add_argument("--status", default="open")
-    c.add_argument("--track", choices=["all", "financial", "macro"], default="all",
-                   help="all (default): both tracks; financial: ternary market only; macro: numeric only")
+    c.add_argument("--track", choices=["all", "financial", "macro", "civic"], default="all",
+                   help="all (default, unchanged since 1.30.0): financial + numeric-only macro/civic; "
+                        "financial: ternary market only; macro: numeric only; "
+                        "civic: full-fidelity Human Forecast/Civic Index (numeric+binary+ordered, new in 1.31.0)")
     c.add_argument("--asset", nargs="*", help="filter by asset/indicator symbols, e.g. GC BTC CPI")
     c.add_argument("--public", action="store_true", help="use the public financial list even when authenticated")
     c.set_defaults(func=cmd_challenges)
@@ -1409,6 +1594,40 @@ def main():
     mo = sub.add_parser("macro-odds", help="View current staking pool odds for a macro challenge")
     mo.add_argument("challenge_id")
     mo.set_defaults(func=cmd_macro_odds)
+
+    fc = sub.add_parser(
+        "forecast",
+        help="Submit a numeric/binary/ordered forecast to a Human Forecast (Civic Index) "
+             "challenge — discovers the frozen schema first (needs credits:stake)",
+    )
+    fc.add_argument("challenge_id")
+    fc.add_argument("--mean", type=float, default=None, help="numeric_distribution targets only")
+    fc.add_argument("--std", type=float, default=None, help="numeric_distribution targets only")
+    fc.add_argument("--yes-probability", type=float, default=None, dest="yes_probability",
+                    help="binary_probability targets only, 0.0-1.0")
+    fc.add_argument("--probability", action="append", default=None,
+                    help="ordered_categorical_distribution targets only; CATEGORY=VALUE, repeat once per category")
+    fc.add_argument("--amount", required=True, type=float,
+                    help="credit amount staked alongside the forecast (forecast+stake are bound)")
+    fc.add_argument("--rationale", default=None)
+    fc.add_argument("--expected-revision", type=int, default=None, dest="expected_revision",
+                    help="pass the previous revision_number to safely revise without clobbering a concurrent update")
+    fc.add_argument("--idempotency-key", default=None, dest="idempotency_key")
+    # --bin/--bin-label are deliberately accepted-then-rejected (not just
+    # absent): a caller migrating from a bin-based mental model gets a clear
+    # explanation instead of an unrecognized-argument error.
+    fc.add_argument("--bin", default=None, help=argparse.SUPPRESS)
+    fc.add_argument("--bin-label", default=None, dest="bin_label", help=argparse.SUPPRESS)
+    fc.set_defaults(func=cmd_forecast)
+
+    cc = sub.add_parser(
+        "civic-challenges",
+        help="List open Human Forecast (Civic Index) challenges with full outcome_shape/forecast_schema "
+             "(equivalent to `challenges --track civic`)",
+    )
+    cc.set_defaults(func=lambda a: cmd_challenges(
+        argparse.Namespace(track="civic", asset=None, status="open", public=True)
+    ))
 
     res = sub.add_parser("results", help="Check challenge results")
     res.add_argument("challenge_id")
