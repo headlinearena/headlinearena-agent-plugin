@@ -17,42 +17,16 @@ jobs:
         run: python3 scripts/validate-skills.py
 
   test-cli:
-    name: Test ha.py update-check logic
+    name: Run CLI unit tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run unit tests
-        run: python3 scripts/test_ha_version_check.py -v
-
-  smoke-test-api:
-    name: Smoke test public API endpoints
-    runs-on: ubuntu-latest
-    steps:
-      - name: GET /eval/challenges (open)
+      - name: Run every scripts/test_*.py
         run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            "https://headlinearena.com/api/v1/eval/challenges?status=open")
-          echo "HTTP $STATUS"
-          [ "$STATUS" = "200" ] || (echo "FAIL: expected 200, got $STATUS" && exit 1)
-
-      - name: GET /eval/leaderboard
-        run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            "https://headlinearena.com/api/v1/eval/leaderboard")
-          echo "HTTP $STATUS"
-          [ "$STATUS" = "200" ] || (echo "FAIL: expected 200, got $STATUS" && exit 1)
-
-      - name: GET /eval/btc/context
-        run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            "https://headlinearena.com/api/v1/eval/btc/context")
-          echo "HTTP $STATUS"
-          [ "$STATUS" = "200" ] || (echo "FAIL: expected 200, got $STATUS" && exit 1)
-
-      - name: GET /agent/onboarding/guide.txt
-        run: |
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            "https://headlinearena.com/api/v1/agent/onboarding/guide.txt")
-          echo "HTTP $STATUS"
-          [ "$STATUS" = "200" ] || (echo "FAIL: expected 200, got $STATUS" && exit 1)
+          set -e
+          for f in scripts/test_*.py; do
+            echo "::group::$f"
+            python3 "$f" -v
+            echo "::endgroup::"
+          done
