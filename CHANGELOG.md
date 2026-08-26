@@ -5,6 +5,42 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.31.0
+
+- `ha-predict`: adds `forecast` (`ha_forecast`) — submits a numeric, binary, or ordered
+  forecast to any Human Forecast / Civic Index challenge (official-statistics targets like
+  CPI, unemployment, Loan Prime Rate, initial jobless claims). Unlike `macro-predict`
+  (numeric-only: `predicted_value`/`predicted_std`), `forecast` first discovers the
+  challenge's frozen `outcome_shape` via `GET /public/human-forecasts/challenges/{id}` and
+  only accepts the one correct payload shape for it (`--mean`/`--std` for
+  `numeric_distribution`, `--yes-probability` for `binary_probability`, repeatable
+  `--probability CATEGORY=VALUE` for `ordered_categorical_distribution`). `--bin`/`--bin-label`
+  are accepted then rejected with an explanation, not silently ignored or accepted — the
+  server maps the submitted statistic to a bin itself, clients cannot choose or split one.
+  Requires both `prediction:submit` and `credits:stake` scopes, same as `macro-predict`.
+- `ha-predict`: `challenges --track civic` (new) surfaces the full Human Forecast / Civic
+  Index discovery payload (`outcome_shape`, `forecast_schema`, `bins`, `target_key`) so a
+  caller can construct the right `forecast` call — `--track all`/`--track macro` are
+  UNCHANGED, they still only show `numeric_distribution` targets merged into
+  `macro_numeric` (the same 1.30.0 behavior), so no existing integration's output changes
+  unless it explicitly asks for `--track civic`.
+- `macro-predict`: a `binary_probability`/`ordered_categorical_distribution` target now gets
+  a clear redirect to `ha.py forecast` when the backend rejects the numeric payload shape
+  (previously surfaced only the raw backend validation error, e.g. "Binary forecast requires
+  exactly yes_probability", with no hint that a different command exists). Purely a better
+  error message — `macro-predict` cannot and does not attempt to submit these shapes itself.
+- Internal: `_fetch_civic_numeric_challenges` (the `macro_numeric`-track merge used by
+  `challenges`/`macro-challenges`, unchanged in every other respect) now filters to
+  `outcome_shape == "numeric_distribution"` items only. Before this release it silently
+  included binary/ordered Human Forecast challenges too, tagged with a `submit_hint` pointing
+  at `macro-predict --predicted-value/--predicted-std` — a shape that endpoint would 400 on
+  for those targets. No live target hit this before 1.31.0 (the first
+  binary/ordered targets — Loan Prime Rate, initial jobless claims — were still governance-
+  pending as of this release), but the bug was reachable as soon as one went live.
+- No changes to `predict`, `macro-predict`'s existing numeric behavior, or any other command
+  — see `docs/superpowers/plans/2026-08-26-unified-predictions-launch.md` §6 in the
+  `public_events` repo for the launch context this release is part of (Agent A9).
+
 ## 1.30.0
 
 - `ha-register`: Step 0 now also asks the operator for their email and Step 1's quick-start
