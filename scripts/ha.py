@@ -25,6 +25,7 @@ Environment:
 
 import argparse
 import json
+import math
 import os
 import re
 import sys
@@ -1047,14 +1048,83 @@ def _civic_asset_from_target_key(target_key):
     return "_".join(parts[2:]) if len(parts) > 2 else (target_key or "")
 
 
+def _fetch_prediction_contract_entries():
+    """Read the versioned, execution-neutral discovery contract.
+
+    A 200 response with an unknown/malformed contract fails closed. The
+    caller may use the legacy Civic endpoint only when the route itself is
+    absent (404), supporting a rolling backend/plugin deployment without
+    silently accepting contract drift.
+    """
+    status, resp = http("GET", api("/public/prediction-contracts"))
+    if status != 200:
+        return status, []
+    if not isinstance(resp, dict) or resp.get("api_contract_version") != "prediction-contract-v2":
+        fail(
+            "Unsupported prediction discovery contract; expected prediction-contract-v2. "
+            "Update the HeadlineArena plugin before submitting."
+        )
+    entries = resp.get("entries")
+    if not isinstance(entries, list):
+        fail("Malformed prediction-contract-v2 response: entries must be a list")
+    return status, entries
+
+
+def _civic_from_contract_entry(entry):
+    if not isinstance(entry, dict):
+        return None
+    contract = entry.get("contract")
+    challenge = entry.get("current_challenge")
+    if not isinstance(contract, dict) or not isinstance(challenge, dict):
+        return None
+    if (
+        contract.get("api_contract_version") != "prediction-contract-v2"
+        or contract.get("site") != "global"
+        or contract.get("execution_family") != "human_forecast"
+        or contract.get("submission_route") != "human_forecast"
+        or contract.get("participation_contract") != "forecast_and_stake"
+        or contract.get("submission_atomic") is not True
+        or not {"prediction:submit", "credits:stake"}.issubset(
+            set(contract.get("required_scopes") or [])
+        )
+        or contract.get("outcome_shape") not in _FORECAST_SUBMIT_HINT
+        or not isinstance(contract.get("forecast_schema"), dict)
+        or challenge.get("status") != "open"
+    ):
+        return None
+    target_key = contract.get("target_key")
+    return {
+        "id": challenge.get("challenge_id"),
+        "asset": _civic_asset_from_target_key(target_key),
+        "target_key": target_key,
+        "scope_key": contract.get("scope_key", target_key),
+        "region": contract.get("region"),
+        "status": challenge.get("status"),
+        "deadline": challenge.get("deadline"),
+        "outcome_shape": contract.get("outcome_shape"),
+        "forecast_schema": contract.get("forecast_schema"),
+        "participation_contract": contract.get("participation_contract"),
+        "required_scopes": contract.get("required_scopes"),
+        "submission_route": contract.get("submission_route"),
+    }
+
+
 def _fetch_civic_challenges():
     """Full-fidelity Human Forecast / Civic Index discovery — unlike
     `_fetch_civic_numeric_challenges` this keeps `outcome_shape`,
-    `forecast_schema`, `bins` and `target_key` so the caller (or `forecast`)
+    `forecast_schema` and `target_key` from prediction-contract-v2 so the caller (or `forecast`)
     can submit the one correct payload shape for numeric, binary AND ordered
     targets. New in 1.31.0 (plan: docs/superpowers/plans/2026-08-26-unified-
     predictions-launch.md §6) — additive, does not change what
     `_fetch_civic_numeric_challenges`/`macro-predict` do."""
+    status, entries = _fetch_prediction_contract_entries()
+    if status == 200:
+        return [item for item in (_civic_from_contract_entry(e) for e in entries) if item]
+    if status != 404:
+        return []
+
+    # Rolling-deploy compatibility only: pre-v2 backends do not expose the
+    # discovery route yet. Never use this fallback for malformed/unknown v2.
     status, resp = http("GET", api("/public/human-forecasts/challenges?status=open"))
     if status != 200:
         return []
@@ -1283,17 +1353,25 @@ def _build_forecast_payload(shape, args, challenge):
     if shape == "numeric_distribution":
         if args.mean is None or args.std is None:
             fail(f"This challenge is numeric_distribution — pass --mean and --std (schema: {schema})")
+        if not math.isfinite(args.mean) or not math.isfinite(args.std):
+            fail("--mean and --std must be finite numbers")
         if args.std <= 0:
             fail("--std must be > 0")
         return {"mean": args.mean, "std": args.std}
     if shape == "binary_probability":
         if args.yes_probability is None:
             fail(f"This challenge is binary_probability — pass --yes-probability (schema: {schema})")
-        if not 0.0 <= args.yes_probability <= 1.0:
+        if not math.isfinite(args.yes_probability) or not 0.0 <= args.yes_probability <= 1.0:
             fail("--yes-probability must be between 0 and 1")
         return {"yes_probability": args.yes_probability}
     if shape == "ordered_categorical_distribution":
-        categories = [b["category"] for b in (challenge.get("bins") or []) if "category" in b]
+        categories = [
+            item.get("key")
+            for item in ((schema or {}).get("categories") or [])
+            if isinstance(item, dict) and item.get("key")
+        ]
+        if not categories:
+            categories = [b["category"] for b in (challenge.get("bins") or []) if "category" in b]
         if not args.probability:
             fail(
                 f"This challenge is ordered_categorical_distribution — pass --probability "
@@ -1304,12 +1382,23 @@ def _build_forecast_payload(shape, args, challenge):
             if "=" not in item:
                 fail(f"--probability must be CATEGORY=VALUE, got {item!r}")
             cat, _, val = item.partition("=")
+            cat = cat.strip()
+            if not cat or cat in probs:
+                fail(f"--probability categories must be non-empty and unique, got {cat!r}")
             try:
                 probs[cat] = float(val)
             except ValueError:
                 fail(f"--probability value must be a number, got {item!r}")
+            if not math.isfinite(probs[cat]) or not 0.0 <= probs[cat] <= 1.0:
+                fail(f"--probability values must be finite numbers between 0 and 1, got {item!r}")
         if categories and set(probs) != set(categories):
             fail(f"--probability categories {sorted(probs)} do not match the frozen set {categories}")
+        tolerance = float((schema or {}).get("tolerance", 0.000001))
+        if not math.isclose(sum(probs.values()), 1.0, rel_tol=0.0, abs_tol=tolerance):
+            fail(
+                f"--probability values must sum to 1 within tolerance {tolerance}; "
+                f"got {sum(probs.values())}"
+            )
         return {"probabilities": probs}
     fail(
         f"Unrecognized outcome_shape {shape!r} for this challenge — this plugin version may be "
@@ -1322,8 +1411,8 @@ def cmd_forecast(args):
     (Civic Index) challenge — official-statistics targets like CPI,
     unemployment, Loan Prime Rate, initial jobless claims. New in 1.31.0:
     unlike `macro-predict` (numeric-only, kept for backward compatibility),
-    this discovers the challenge's frozen `outcome_shape` first via the
-    public detail endpoint and only accepts the one correct payload shape
+    this discovers the challenge's frozen `outcome_shape` first via
+    prediction-contract-v2 and only accepts the one correct payload shape
     for it — the server maps your statistic to a bin itself, so `--bin`/
     `--bin-label` are rejected outright, never silently accepted.
 
@@ -1335,9 +1424,30 @@ def cmd_forecast(args):
     _reject_client_bin(args)
     if args.amount <= 0:
         fail("amount must be > 0 (credit staked alongside the forecast)")
-    status, resp = http("GET", api(f"/public/human-forecasts/challenges/{args.challenge_id}"))
-    expect(status, resp)
-    challenge = resp.get("challenge", resp)
+    status, entries = _fetch_prediction_contract_entries()
+    challenge = None
+    if status == 200:
+        challenge = next(
+            (
+                item
+                for item in (_civic_from_contract_entry(entry) for entry in entries)
+                if item and item.get("id") == args.challenge_id
+            ),
+            None,
+        )
+        if challenge is None:
+            fail(
+                "Challenge is not an open Human Forecast in prediction-contract-v2; "
+                "run `ha.py challenges --track civic` and use a listed challenge_id."
+            )
+    elif status == 404:
+        legacy_status, resp = http(
+            "GET", api(f"/public/human-forecasts/challenges/{args.challenge_id}")
+        )
+        expect(legacy_status, resp)
+        challenge = resp.get("challenge", resp)
+    else:
+        fail("Prediction discovery is unavailable; forecast was not submitted.", status)
     shape = challenge.get("outcome_shape")
     forecast = _build_forecast_payload(shape, args, challenge)
     body = {

@@ -4,8 +4,8 @@ docs/superpowers/plans/2026-08-26-unified-predictions-launch.md in the
 public_events repo, §6 "HA Plugin release decision").
 
 Covers:
-- `_fetch_civic_challenges` (full-fidelity discovery: outcome_shape,
-  forecast_schema, bins, target_key kept — unlike the legacy
+- `_fetch_civic_challenges` (prediction-contract-v2 discovery: outcome_shape,
+  forecast_schema and target_key kept — unlike the legacy
   `_fetch_civic_numeric_challenges`, which now ALSO filters to
   numeric_distribution-only, a real behavior change from 1.30.0 covered
   here and reconciled against test_ha_civic_numeric_merge.py).
@@ -66,21 +66,68 @@ ORDERED_ITEM = {
 }
 
 
+def contract_entry(item):
+    schema = item["forecast_schema"]
+    if item["outcome_shape"] == "ordered_categorical_distribution":
+        schema = {
+            "input_encoding": "ordered_probabilities",
+            "outcome_shape": item["outcome_shape"],
+            "required_fields": ["probabilities"],
+            "categories": [
+                {"key": value, "labels": {"en": value, "zh-Hans": value,
+                                             "zh-Hant": value, "yue": value}}
+                for value in ("down", "flat", "up")
+            ],
+            "probability_sum": 1,
+            "tolerance": "0.000001",
+            "additional_properties": False,
+        }
+    return {
+        "contract": {
+            "api_contract_version": "prediction-contract-v2",
+            "target_key": item["target_key"],
+            "scope_key": item["scope_key"],
+            "site": "global",
+            "region": item["region"],
+            "execution_family": "human_forecast",
+            "submission_route": "human_forecast",
+            "outcome_shape": item["outcome_shape"],
+            "forecast_schema": schema,
+            "participation_contract": "forecast_and_stake",
+            "submission_atomic": True,
+            "required_scopes": ["prediction:submit", "credits:stake"],
+        },
+        "current_challenge": {
+            "challenge_id": item["id"],
+            "status": item["status"],
+            "deadline": item["deadline"],
+        },
+    }
+
+
+def v2_response(*items):
+    return {
+        "api_contract_version": "prediction-contract-v2",
+        "entries": [contract_entry(item) for item in items],
+    }
+
+
 class FetchCivicChallengesTests(unittest.TestCase):
     def test_keeps_full_fidelity_fields(self):
-        with mock.patch.object(ha, "http", return_value=(200, {"challenges": [BINARY_ITEM]})):
+        with mock.patch.object(ha, "http", return_value=(200, v2_response(BINARY_ITEM))):
             items = ha._fetch_civic_challenges()
         self.assertEqual(len(items), 1)
         item = items[0]
         self.assertEqual(item["outcome_shape"], "binary_probability")
         self.assertEqual(item["forecast_schema"], BINARY_ITEM["forecast_schema"])
-        self.assertEqual(item["bins"], BINARY_ITEM["bins"])
+        self.assertEqual(item["submission_route"], "human_forecast")
+        self.assertEqual(item["participation_contract"], "forecast_and_stake")
         self.assertEqual(item["target_key"], "HF_CN_LPR")
         self.assertEqual(item["asset"], "LPR")  # "HF_CN_LPR" -> drop family+region, same as legacy behavior
 
     def test_includes_all_shapes_unfiltered(self):
         with mock.patch.object(
-            ha, "http", return_value=(200, {"challenges": [NUMERIC_ITEM, BINARY_ITEM, ORDERED_ITEM]})
+            ha, "http", return_value=(200, v2_response(NUMERIC_ITEM, BINARY_ITEM, ORDERED_ITEM))
         ):
             items = ha._fetch_civic_challenges()
         self.assertEqual(len(items), 3)
@@ -89,6 +136,36 @@ class FetchCivicChallengesTests(unittest.TestCase):
         with mock.patch.object(ha, "http", return_value=(500, {"detail": "error"})):
             items = ha._fetch_civic_challenges()
         self.assertEqual(items, [])
+
+    def test_unknown_successful_contract_fails_closed(self):
+        with mock.patch.object(
+            ha,
+            "http",
+            return_value=(200, {"api_contract_version": "prediction-contract-v3", "entries": []}),
+        ):
+            with self.assertRaises(ha.HAFailure):
+                ha._fetch_civic_challenges()
+
+    def test_non_atomic_human_contract_is_not_discoverable(self):
+        entry = contract_entry(BINARY_ITEM)
+        entry["contract"]["submission_atomic"] = False
+        response = v2_response()
+        response["entries"] = [entry]
+        with mock.patch.object(ha, "http", return_value=(200, response)):
+            self.assertEqual(ha._fetch_civic_challenges(), [])
+
+    def test_404_route_uses_legacy_rolling_deploy_fallback(self):
+        with mock.patch.object(
+            ha,
+            "http",
+            side_effect=[
+                (404, {"detail": "not found"}),
+                (200, {"challenges": [BINARY_ITEM]}),
+            ],
+        ) as mocked:
+            items = ha._fetch_civic_challenges()
+        self.assertEqual(items[0]["id"], "c-binary")
+        self.assertEqual(mocked.call_count, 2)
 
 
 class LegacyCivicNumericNowFiltersShapeTests(unittest.TestCase):
@@ -206,6 +283,12 @@ class BuildForecastPayloadTests(unittest.TestCase):
                 "numeric_distribution", ForecastArgs(mean=3.4, std=0), NUMERIC_ITEM
             )
 
+    def test_numeric_shape_rejects_non_finite_values(self):
+        with self.assertRaises(ha.HAFailure):
+            ha._build_forecast_payload(
+                "numeric_distribution", ForecastArgs(mean=float("nan"), std=0.2), NUMERIC_ITEM
+            )
+
     def test_binary_shape(self):
         payload = ha._build_forecast_payload(
             "binary_probability", ForecastArgs(yes_probability=0.6), BINARY_ITEM
@@ -218,15 +301,22 @@ class BuildForecastPayloadTests(unittest.TestCase):
                 "binary_probability", ForecastArgs(yes_probability=1.5), BINARY_ITEM
             )
 
+    def test_binary_shape_rejects_nan(self):
+        with self.assertRaises(ha.HAFailure):
+            ha._build_forecast_payload(
+                "binary_probability", ForecastArgs(yes_probability=float("nan")), BINARY_ITEM
+            )
+
     def test_binary_shape_missing_fails(self):
         with self.assertRaises(ha.HAFailure):
             ha._build_forecast_payload("binary_probability", ForecastArgs(), BINARY_ITEM)
 
     def test_ordered_shape(self):
+        ordered_v2 = ha._civic_from_contract_entry(contract_entry(ORDERED_ITEM))
         payload = ha._build_forecast_payload(
             "ordered_categorical_distribution",
             ForecastArgs(probability=["down=0.2", "flat=0.3", "up=0.5"]),
-            ORDERED_ITEM,
+            ordered_v2,
         )
         self.assertEqual(payload, {"probabilities": {"down": 0.2, "flat": 0.3, "up": 0.5}})
 
@@ -252,6 +342,23 @@ class BuildForecastPayloadTests(unittest.TestCase):
                 "ordered_categorical_distribution", ForecastArgs(probability=["not-a-pair"]), ORDERED_ITEM
             )
 
+    def test_ordered_shape_rejects_duplicate_category(self):
+        with self.assertRaises(ha.HAFailure):
+            ha._build_forecast_payload(
+                "ordered_categorical_distribution",
+                ForecastArgs(probability=["down=0.2", "down=0.3", "flat=0.1", "up=0.4"]),
+                ORDERED_ITEM,
+            )
+
+    def test_ordered_shape_rejects_probability_sum_not_one(self):
+        ordered_v2 = ha._civic_from_contract_entry(contract_entry(ORDERED_ITEM))
+        with self.assertRaises(ha.HAFailure):
+            ha._build_forecast_payload(
+                "ordered_categorical_distribution",
+                ForecastArgs(probability=["down=0.2", "flat=0.2", "up=0.2"]),
+                ordered_v2,
+            )
+
     def test_unrecognized_shape_fails_with_update_hint(self):
         with self.assertRaises(ha.HAFailure) as ctx:
             ha._build_forecast_payload("some_future_shape", ForecastArgs(), NUMERIC_ITEM)
@@ -274,35 +381,29 @@ class CmdForecastTests(unittest.TestCase):
     def test_full_flow_binary_shape(self):
         calls = []
 
-        def fake_http(method, url, body=None, token=None, agent_id=None):
-            calls.append(("http", method, url))
-            return 200, {"challenge": BINARY_ITEM}
-
         def fake_authed(method, path, body=None):
             calls.append(("authed", method, path, body))
             return 200, {"ok": True, "forecast_id": "f1", "bin_label": "YES"}
 
         with (
-            mock.patch.object(ha, "http", side_effect=fake_http),
+            mock.patch.object(
+                ha, "_fetch_prediction_contract_entries",
+                return_value=(200, [contract_entry(BINARY_ITEM)]),
+            ),
             mock.patch.object(ha, "authed", side_effect=fake_authed),
             mock.patch.object(ha, "out") as mock_out,
         ):
             ha.cmd_forecast(ForecastArgs(challenge_id="c-binary", yes_probability=0.6, amount=10))
 
-        self.assertEqual(calls[0][0], "http")
-        self.assertIn("c-binary", calls[0][2])
-        self.assertEqual(calls[1][0], "authed")
-        self.assertEqual(calls[1][2], "/eval/human-forecasts/challenges/c-binary/forecast")
-        body = calls[1][3]
+        self.assertEqual(calls[0][0], "authed")
+        self.assertEqual(calls[0][2], "/eval/human-forecasts/challenges/c-binary/forecast")
+        body = calls[0][3]
         self.assertEqual(body["forecast"], {"yes_probability": 0.6})
         self.assertEqual(body["amount"], 10)
         self.assertIn("idempotency_key", body)
         mock_out.assert_called_once_with({"ok": True, "forecast_id": "f1", "bin_label": "YES"})
 
     def test_uses_caller_supplied_idempotency_key(self):
-        def fake_http(method, url, body=None, token=None, agent_id=None):
-            return 200, {"challenge": NUMERIC_ITEM}
-
         captured = {}
 
         def fake_authed(method, path, body=None):
@@ -310,7 +411,10 @@ class CmdForecastTests(unittest.TestCase):
             return 200, {"ok": True}
 
         with (
-            mock.patch.object(ha, "http", side_effect=fake_http),
+            mock.patch.object(
+                ha, "_fetch_prediction_contract_entries",
+                return_value=(200, [contract_entry(NUMERIC_ITEM)]),
+            ),
             mock.patch.object(ha, "authed", side_effect=fake_authed),
             mock.patch.object(ha, "out"),
         ):
@@ -320,9 +424,6 @@ class CmdForecastTests(unittest.TestCase):
         self.assertEqual(captured["body"]["idempotency_key"], "my-key-123")
 
     def test_expected_revision_included_when_set(self):
-        def fake_http(method, url, body=None, token=None, agent_id=None):
-            return 200, {"challenge": NUMERIC_ITEM}
-
         captured = {}
 
         def fake_authed(method, path, body=None):
@@ -330,7 +431,10 @@ class CmdForecastTests(unittest.TestCase):
             return 200, {"ok": True}
 
         with (
-            mock.patch.object(ha, "http", side_effect=fake_http),
+            mock.patch.object(
+                ha, "_fetch_prediction_contract_entries",
+                return_value=(200, [contract_entry(NUMERIC_ITEM)]),
+            ),
             mock.patch.object(ha, "authed", side_effect=fake_authed),
             mock.patch.object(ha, "out"),
         ):
@@ -340,23 +444,26 @@ class CmdForecastTests(unittest.TestCase):
         self.assertEqual(captured["body"]["expected_revision"], 2)
 
     def test_missing_scope_gives_friendly_message(self):
-        def fake_http(method, url, body=None, token=None, agent_id=None):
-            return 200, {"challenge": BINARY_ITEM}
-
         def fake_authed(method, path, body=None):
             return 403, {"detail": "missing scope credits:stake"}
 
         with (
-            mock.patch.object(ha, "http", side_effect=fake_http),
+            mock.patch.object(
+                ha, "_fetch_prediction_contract_entries",
+                return_value=(200, [contract_entry(BINARY_ITEM)]),
+            ),
             mock.patch.object(ha, "authed", side_effect=fake_authed),
         ):
             with self.assertRaises(ha.HAFailure):
                 ha.cmd_forecast(ForecastArgs(challenge_id="c-binary", yes_probability=0.6, amount=10))
 
-    def test_discovery_404_surfaces_as_failure_not_a_crash(self):
-        with mock.patch.object(ha, "http", return_value=(404, {"detail": "not found"})):
+    def test_v2_missing_challenge_fails_before_submit(self):
+        with mock.patch.object(
+            ha, "_fetch_prediction_contract_entries", return_value=(200, [])
+        ), mock.patch.object(ha, "authed") as authed:
             with self.assertRaises(ha.HAFailure):
                 ha.cmd_forecast(ForecastArgs(challenge_id="nope", yes_probability=0.5, amount=10))
+        authed.assert_not_called()
 
 
 class MacroPredictShapeMismatchHintTests(unittest.TestCase):

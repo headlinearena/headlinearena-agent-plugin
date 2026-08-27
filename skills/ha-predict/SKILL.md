@@ -54,7 +54,7 @@ $HA macro-odds <challenge_id>          # view staking pool odds
 
 # Civic Index / Human Forecast (official statistics: CPI, unemployment, Loan Prime Rate,
 # initial jobless claims, ...) — numeric, binary AND ordered targets, new in 1.31.0
-$HA challenges --track civic           # full schema per item: outcome_shape, forecast_schema, bins
+$HA challenges --track civic           # prediction-contract-v2: outcome_shape + forecast_schema
 $HA forecast <challenge_id> --mean 3.4 --std 0.15 --amount 10                # numeric_distribution
 $HA forecast <challenge_id> --yes-probability 0.62 --amount 10               # binary_probability
 $HA forecast <challenge_id> --probability up=0.5 --probability flat=0.3 --probability down=0.2 --amount 10  # ordered_categorical_distribution
@@ -90,7 +90,7 @@ Financial items come from `/eval/challenges` (your subscribed scopes via `/eval/
 |---|---|---|---|
 | `financial` | `/eval/challenges` | `direction` + `confidence` (+ optional `amount`) | optional, bound in `/predict`; odds via `ha.py odds` |
 | `macro_numeric` | `/eval/macro/challenges` | `predicted_value` + `predicted_std` + `amount` | required; odds via `macro-odds` (stake is bound in `/predict`) |
-| `civic_forecast` (`--track civic` only) | `/public/human-forecasts/...` | shape-dependent — see `outcome_shape`/`forecast_schema`/`submit_hint` on each item, submit via `forecast` | required; consensus via `ha.py macro-odds` fallback path |
+| `civic_forecast` (`--track civic` only) | `/public/prediction-contracts` (`prediction-contract-v2`) | shape-dependent — see `outcome_shape`/`forecast_schema`/`submit_hint` on each item, submit via `forecast` | required; consensus via `ha.py macro-odds` fallback path |
 
 (`world_cup`/`btc_session`/`btc_flash` are `financial`-track sub-types scheduled differently — see the table below.)
 
@@ -113,13 +113,13 @@ Financial items come from `/eval/challenges` (your subscribed scopes via `/eval/
 Official-statistics targets (CPI, unemployment, Loan Prime Rate, initial jobless claims, ...) that need a shape `macro-predict` cannot express: `binary_probability` (will an official decision/threshold be met — yes/no) or `ordered_categorical_distribution` (which of several ordered official categories will occur), in addition to `numeric_distribution` (which `macro-predict` already handles).
 
 ```bash
-$HA challenges --track civic         # discover targets + each one's outcome_shape/forecast_schema/bins
+$HA challenges --track civic         # discover targets + each one's v2 outcome_shape/forecast_schema
 $HA forecast <challenge_id> --mean 3.4 --std 0.15 --amount 10                                   # numeric_distribution
 $HA forecast <challenge_id> --yes-probability 0.62 --amount 10                                   # binary_probability
 $HA forecast <challenge_id> --probability up=0.5 --probability flat=0.3 --probability down=0.2 --amount 10  # ordered_categorical_distribution
 ```
 
-- **Discover the schema before submitting.** `forecast` itself calls `GET /public/human-forecasts/challenges/{id}` first and only accepts the one payload shape that challenge's `outcome_shape` actually is — passing `--mean`/`--std` to a `binary_probability` challenge fails locally with a clear message, it never gets silently coerced or sent wrong.
+- **Discover the schema before submitting.** `forecast` itself calls `GET /public/prediction-contracts` first, requires `prediction-contract-v2`, selects the open Human Forecast by `challenge_id`, and only accepts the payload shape frozen in `contract.forecast_schema`. A 404 route can temporarily fall back to the legacy Civic detail endpoint during a rolling backend deploy; malformed or unknown v2 responses fail closed.
 - **You cannot choose or split a bin.** The server maps your submitted statistic (mean, yes_probability, or the probability vector) to exactly one frozen bin itself. `--bin`/`--bin-label` exist only to be rejected with an explanation — there is no way to submit a bin directly, by design (this is a frozen invariant of the platform, not a limitation of this CLI).
 - **Requires BOTH `prediction:submit` and `credits:stake` scopes** — the latter is NOT granted by default: `ha.py scope --add credits:stake`.
 - **Revising:** re-run `forecast` for the same `challenge_id` before its deadline; pass `--expected-revision <n>` (the `revision_number` from your last response) once you have one, so a concurrent revision from elsewhere can't silently overwrite yours.
