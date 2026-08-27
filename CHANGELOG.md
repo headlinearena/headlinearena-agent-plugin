@@ -11,15 +11,19 @@ versioning rules in `CLAUDE.md`.
   forecast to any Human Forecast / Civic Index challenge (official-statistics targets like
   CPI, unemployment, Loan Prime Rate, initial jobless claims). Unlike `macro-predict`
   (numeric-only: `predicted_value`/`predicted_std`), `forecast` first discovers the
-  challenge's frozen `outcome_shape` via `GET /public/human-forecasts/challenges/{id}` and
-  only accepts the one correct payload shape for it (`--mean`/`--std` for
+  challenge's frozen `outcome_shape` and input schema via the versioned
+  `GET /public/prediction-contracts` contract and only accepts the one correct payload shape
+  for it (`--mean`/`--std` for
   `numeric_distribution`, `--yes-probability` for `binary_probability`, repeatable
-  `--probability CATEGORY=VALUE` for `ordered_categorical_distribution`). `--bin`/`--bin-label`
+  `--probability CATEGORY=VALUE` for `ordered_categorical_distribution`). Unknown or malformed
+  contract versions fail closed; only a missing v2 route (404) uses the legacy detail endpoint
+  during a rolling backend deploy. Non-finite values, duplicate categories, out-of-range
+  probabilities, and vectors that do not sum to one are rejected locally. `--bin`/`--bin-label`
   are accepted then rejected with an explanation, not silently ignored or accepted — the
   server maps the submitted statistic to a bin itself, clients cannot choose or split one.
   Requires both `prediction:submit` and `credits:stake` scopes, same as `macro-predict`.
-- `ha-predict`: `challenges --track civic` (new) surfaces the full Human Forecast / Civic
-  Index discovery payload (`outcome_shape`, `forecast_schema`, `bins`, `target_key`) so a
+- `ha-predict`: `challenges --track civic` (new) projects the Human Forecast / Civic Index
+  entries from `prediction-contract-v2` (`outcome_shape`, `forecast_schema`, `target_key`) so a
   caller can construct the right `forecast` call — `--track all`/`--track macro` are
   UNCHANGED, they still only show `numeric_distribution` targets merged into
   `macro_numeric` (the same 1.30.0 behavior), so no existing integration's output changes
