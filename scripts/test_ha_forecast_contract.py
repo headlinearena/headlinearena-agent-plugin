@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for the 1.31.0 unified-forecast-contract additions (Agent A9 of
-docs/superpowers/plans/2026-08-26-unified-predictions-launch.md in the
-public_events repo, §6 "HA Plugin release decision").
+"""Tests for the canonical Civic Index forecast contract.
 
 Covers:
 - `_fetch_civic_challenges` (prediction-contract-v2 discovery: outcome_shape,
@@ -9,9 +7,9 @@ Covers:
   `_fetch_civic_numeric_challenges`, which now ALSO filters to
   numeric_distribution-only, a real behavior change from 1.30.0 covered
   here and reconciled against test_ha_civic_numeric_merge.py).
-- `challenges --track civic` (new, opt-in; `--track all/financial/macro`
-  unchanged — see test_ha_civic_numeric_merge.py for those).
-- `forecast` (new command): payload construction per outcome_shape,
+- `challenges --track civic` as the canonical official-statistics discovery;
+  `--track macro` is only a deprecated alias.
+- `forecast`: payload construction per outcome_shape,
   --bin/--bin-label rejection, ordered-category validation.
 - `macro-predict`'s new shape-mismatch redirect hint.
 
@@ -161,11 +159,68 @@ class FetchCivicChallengesTests(unittest.TestCase):
             side_effect=[
                 (404, {"detail": "not found"}),
                 (200, {"challenges": [BINARY_ITEM]}),
+                (200, {"challenges": []}),
             ],
         ) as mocked:
             items = ha._fetch_civic_challenges()
         self.assertEqual(items[0]["id"], "c-binary")
-        self.assertEqual(mocked.call_count, 2)
+        self.assertEqual(mocked.call_count, 3)
+
+    def test_open_legacy_macro_round_is_projected_into_civic(self):
+        legacy = {
+            "id": "legacy-cpi",
+            "asset": "CPI",
+            "canonical_target_key": "HF_US_CPI",
+            "status": "open",
+            "deadline": "2026-09-10T12:00:00Z",
+            "compatibility_status": "legacy_open_round",
+        }
+        with mock.patch.object(
+            ha,
+            "http",
+            side_effect=[
+                (200, v2_response()),
+                (200, {"challenges": [legacy]}),
+            ],
+        ):
+            items = ha._fetch_civic_challenges()
+        self.assertEqual(items[0]["target_key"], "HF_US_CPI")
+        self.assertEqual(items[0]["submission_route"], "macro_numeric_legacy")
+        self.assertEqual(items[0]["outcome_shape"], "numeric_distribution")
+
+    def test_deprecated_macro_endpoint_failure_does_not_hide_v2_items(self):
+        with mock.patch.object(
+            ha,
+            "http",
+            side_effect=[
+                (200, v2_response(BINARY_ITEM)),
+                (503, {"detail": "legacy unavailable"}),
+            ],
+        ):
+            items = ha._fetch_civic_challenges()
+        self.assertEqual([item["id"] for item in items], ["c-binary"])
+
+    def test_v2_projection_wins_when_legacy_list_duplicates_round(self):
+        entry = contract_entry(NUMERIC_ITEM)
+        entry["contract"].update(
+            execution_family="macro_numeric",
+            submission_route="macro_numeric_legacy",
+            compatibility_status="legacy_open_round",
+        )
+        response = v2_response()
+        response["entries"] = [entry]
+        with mock.patch.object(
+            ha,
+            "http",
+            side_effect=[
+                (200, response),
+                (200, {"challenges": [{"id": "c-numeric", "asset": "CPI"}]}),
+            ],
+        ):
+            items = ha._fetch_civic_challenges()
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["target_key"], "HF_US_CPI")
+        self.assertEqual(items[0]["compatibility_status"], "legacy_open_round")
 
 
 class LegacyCivicNumericNowFiltersShapeTests(unittest.TestCase):
@@ -460,10 +515,59 @@ class CmdForecastTests(unittest.TestCase):
     def test_v2_missing_challenge_fails_before_submit(self):
         with mock.patch.object(
             ha, "_fetch_prediction_contract_entries", return_value=(200, [])
-        ), mock.patch.object(ha, "authed") as authed:
+        ), mock.patch.object(ha, "_fetch_macro_challenges", return_value=[]), \
+             mock.patch.object(ha, "authed") as authed:
             with self.assertRaises(ha.HAFailure):
                 ha.cmd_forecast(ForecastArgs(challenge_id="nope", yes_probability=0.5, amount=10))
         authed.assert_not_called()
+
+    def test_forecast_transparently_submits_open_legacy_round(self):
+        legacy = {
+            "id": "legacy-cpi",
+            "asset": "CPI",
+            "canonical_target_key": "HF_US_CPI",
+            "status": "open",
+        }
+        with (
+            mock.patch.object(ha, "_fetch_prediction_contract_entries", return_value=(200, [])),
+            mock.patch.object(ha, "_fetch_macro_challenges", return_value=[legacy]),
+            mock.patch.object(ha, "authed", return_value=(200, {"ok": True})) as authed,
+            mock.patch.object(ha, "out"),
+        ):
+            ha.cmd_forecast(ForecastArgs(
+                challenge_id="legacy-cpi", mean=3.1, std=0.2, amount=25,
+                rationale="official release model",
+            ))
+        path = authed.call_args[0][1]
+        body = authed.call_args[0][2]
+        self.assertEqual(path, "/eval/macro/challenges/legacy-cpi/predict")
+        self.assertEqual(body, {
+            "predicted_value": 3.1,
+            "predicted_std": 0.2,
+            "amount": 25,
+            "rationale": "official release model",
+        })
+
+    def test_forecast_uses_frozen_legacy_route_from_v2_projection(self):
+        entry = contract_entry(NUMERIC_ITEM)
+        entry["contract"].update(
+            execution_family="macro_numeric",
+            submission_route="macro_numeric_legacy",
+            compatibility_status="legacy_open_round",
+        )
+        with (
+            mock.patch.object(
+                ha, "_fetch_prediction_contract_entries", return_value=(200, [entry])
+            ),
+            mock.patch.object(ha, "authed", return_value=(200, {"ok": True})) as authed,
+            mock.patch.object(ha, "out"),
+        ):
+            ha.cmd_forecast(ForecastArgs(
+                challenge_id="c-numeric", mean=3.1, std=0.2, amount=25,
+            ))
+        self.assertEqual(
+            authed.call_args[0][1], "/eval/macro/challenges/c-numeric/predict"
+        )
 
 
 class MacroPredictShapeMismatchHintTests(unittest.TestCase):

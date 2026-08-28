@@ -9,8 +9,8 @@ Usage examples:
   ha.py challenge                      # re-print pending challenge prompt
   ha.py challenge-submit --file answer.json
   ha.py subscribe GC BTC
-  ha.py challenges                     # unified: every open challenge (financial + macro), tagged by track
-  ha.py challenges --track civic       # Human Forecast/Civic Index only, full numeric+binary+ordered schema
+  ha.py challenges                     # unified: every open financial + Civic Index challenge
+  ha.py challenges --track civic       # Civic Index only, full numeric+binary+ordered schema
   ha.py predict <challenge_id> --direction bullish --confidence 0.7 --reasoning "..."
   ha.py forecast <challenge_id> --yes-probability 0.6 --amount 10   # binary_probability Civic Index target
   ha.py results <challenge_id>
@@ -36,7 +36,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.31.0"
+CLI_VERSION = "1.32.0"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -1015,7 +1015,7 @@ def _fetch_civic_numeric_challenges():
     challenge (e.g. a Loan-Prime-Rate or initial-jobless-claims target) would
     otherwise show up here with a submit_hint that's simply wrong for its
     shape and 400 at submit time; those only appear via `_fetch_civic_challenges`
-    / `--track civic` / `forecast` now (see CHANGELOG 1.31.0)."""
+    / `--track civic` / `forecast` (see the 1.31.0 compatibility history)."""
     status, resp = http("GET", api("/public/human-forecasts/challenges?status=open"))
     if status != 200:
         return []
@@ -1077,11 +1077,14 @@ def _civic_from_contract_entry(entry):
     challenge = entry.get("current_challenge")
     if not isinstance(contract, dict) or not isinstance(challenge, dict):
         return None
+    execution_route = (contract.get("execution_family"), contract.get("submission_route"))
     if (
         contract.get("api_contract_version") != "prediction-contract-v2"
         or contract.get("site") != "global"
-        or contract.get("execution_family") != "human_forecast"
-        or contract.get("submission_route") != "human_forecast"
+        or execution_route not in {
+            ("human_forecast", "human_forecast"),
+            ("macro_numeric", "macro_numeric_legacy"),
+        }
         or contract.get("participation_contract") != "forecast_and_stake"
         or contract.get("submission_atomic") is not True
         or not {"prediction:submit", "credits:stake"}.issubset(
@@ -1105,48 +1108,104 @@ def _civic_from_contract_entry(entry):
         "forecast_schema": contract.get("forecast_schema"),
         "participation_contract": contract.get("participation_contract"),
         "required_scopes": contract.get("required_scopes"),
+        "execution_family": contract.get("execution_family"),
         "submission_route": contract.get("submission_route"),
+        "compatibility_status": contract.get("compatibility_status"),
+    }
+
+
+def _legacy_macro_as_civic(item):
+    """Project an already-open Legacy Macro round into the canonical Civic
+    discovery shape. The route remains explicit so `forecast` preserves the
+    round's frozen legacy write contract instead of pretending it was created
+    by Human Forecast."""
+    if not isinstance(item, dict) or not item.get("id"):
+        return None
+    canonical = item.get("canonical_target_key") or item.get("asset")
+    return {
+        "id": item.get("id"),
+        "asset": _civic_asset_from_target_key(canonical),
+        "target_key": canonical,
+        "scope_key": item.get("scope_key", canonical),
+        "region": item.get("region"),
+        "status": item.get("status", "open"),
+        "deadline": item.get("deadline"),
+        "unit": item.get("unit"),
+        "outcome_shape": "numeric_distribution",
+        "forecast_schema": {
+            "outcome_shape": "numeric_distribution",
+            "input_encoding": "normal_mean_std",
+            "required_fields": ["mean", "std"],
+            "additional_properties": False,
+        },
+        "participation_contract": "forecast_and_stake",
+        "required_scopes": ["prediction:submit", "credits:stake"],
+        "submission_route": "macro_numeric_legacy",
+        "compatibility_status": item.get("compatibility_status", "legacy_open_round"),
     }
 
 
 def _fetch_civic_challenges():
-    """Full-fidelity Human Forecast / Civic Index discovery — unlike
-    `_fetch_civic_numeric_challenges` this keeps `outcome_shape`,
-    `forecast_schema` and `target_key` from prediction-contract-v2 so the caller (or `forecast`)
-    can submit the one correct payload shape for numeric, binary AND ordered
-    targets. New in 1.31.0 (plan: docs/superpowers/plans/2026-08-26-unified-
-    predictions-launch.md §6) — additive, does not change what
-    `_fetch_civic_numeric_challenges`/`macro-predict` do."""
+    """Canonical Civic Index discovery.
+
+    prediction-contract-v2 is authoritative for both Human Forecast rounds
+    and projected, still-open Legacy Macro rounds. During the bounded
+    convergence window, an older backend may not project legacy rounds into
+    v2 yet, so the deprecated macro list is read as a best-effort fallback.
+    A failed deprecated endpoint must never hide valid canonical v2 entries.
+    """
     status, entries = _fetch_prediction_contract_entries()
     if status == 200:
-        return [item for item in (_civic_from_contract_entry(e) for e in entries) if item]
-    if status != 404:
+        out_items = [item for item in (_civic_from_contract_entry(e) for e in entries) if item]
+    elif status != 404:
         return []
+    else:
+        out_items = []
 
     # Rolling-deploy compatibility only: pre-v2 backends do not expose the
     # discovery route yet. Never use this fallback for malformed/unknown v2.
-    status, resp = http("GET", api("/public/human-forecasts/challenges?status=open"))
-    if status != 200:
-        return []
-    items = resp.get("challenges", resp.get("items", []))
-    out_items = []
-    for item in items:
-        out_items.append(
-            {
-                "id": item.get("id"),
-                "asset": _civic_asset_from_target_key(item.get("target_key", "")),
-                "target_key": item.get("target_key"),
-                "scope_key": item.get("scope_key", item.get("target_key")),
-                "region": item.get("region"),
-                "status": item.get("status"),
-                "deadline": item.get("deadline"),
-                "unit": item.get("unit"),
-                "outcome_shape": item.get("outcome_shape"),
-                "forecast_schema": item.get("forecast_schema"),
-                "bins": item.get("bins"),
-            }
+    if status == 404:
+        legacy_status, resp = http(
+            "GET", api("/public/human-forecasts/challenges?status=open")
         )
-    return out_items
+        if legacy_status == 200:
+            items = resp.get("challenges", resp.get("items", []))
+            for item in items:
+                out_items.append(
+                    {
+                        "id": item.get("id"),
+                        "asset": _civic_asset_from_target_key(item.get("target_key", "")),
+                        "target_key": item.get("target_key"),
+                        "scope_key": item.get("scope_key", item.get("target_key")),
+                        "region": item.get("region"),
+                        "status": item.get("status"),
+                        "deadline": item.get("deadline"),
+                        "unit": item.get("unit"),
+                        "outcome_shape": item.get("outcome_shape"),
+                        "forecast_schema": item.get("forecast_schema"),
+                        "bins": item.get("bins"),
+                        "submission_route": "human_forecast",
+                    }
+                )
+
+    # Until every target has crossed its explicit period boundary, currently
+    # open Legacy Macro rounds remain valid Civic compatibility rounds. Always
+    # include them, even when v2 is present but has no macro projection.
+    try:
+        legacy_rows = _fetch_macro_challenges()
+    except HAFailure:
+        legacy_rows = []
+    out_items.extend(
+        item for item in (_legacy_macro_as_civic(row) for row in legacy_rows) if item
+    )
+    deduped = {}
+    for item in out_items:
+        if item.get("id"):
+            # Keep the versioned v2 projection when the same legacy round is
+            # also returned by the old list endpoint: v2 carries the frozen
+            # route/schema and is the canonical contract.
+            deduped.setdefault(item["id"], item)
+    return list(deduped.values())
 
 
 _FORECAST_SUBMIT_HINT = {
@@ -1157,21 +1216,13 @@ _FORECAST_SUBMIT_HINT = {
 
 
 def cmd_challenges(args):
-    """Unified discovery entry: lists every currently-open challenge across
-    tracks — financial ternary (direction/confidence), macro numeric
-    (value/uncertainty), and (opt-in via --track civic, new in 1.31.0) the
-    full-fidelity Human Forecast / Civic Index track covering numeric,
-    binary and ordered targets — each tagged with `track` and `submit_hint`
-    so the caller routes straight to `predict` / `macro-predict` /
-    `forecast`. `--track financial|macro|civic` narrows to one family;
-    `--asset` filters all by symbol/indicator.
+    """Canonical discovery for financial markets plus Civic Index.
 
-    `--track all` (the default) is UNCHANGED from 1.30.0 on purpose — it
-    still only surfaces numeric_distribution Human Forecast targets merged
-    into `macro_numeric` (see _fetch_civic_numeric_challenges), so existing
-    integrations see exactly what they saw before. Binary/ordered targets
-    (e.g. Loan Prime Rate, initial jobless claims) only appear via the new
-    `civic` track — ask for it explicitly to discover them."""
+    Civic contains every official-statistics/policy forecast shape. ``macro``
+    remains accepted only as a deprecated spelling of ``civic``; it is not a
+    separate public family. Each item includes the command-specific
+    ``submit_hint`` required by its frozen contract.
+    """
     track = (args.track or "all").lower()
     if track not in ("all", "financial", "macro", "civic"):
         fail("--track must be one of: all, financial, macro, civic")
@@ -1186,18 +1237,9 @@ def cmd_challenges(args):
             c["submit_hint"] = ("predict <id> --direction bullish|bearish|neutral "
                                 "--confidence 0.0-1.0 --reasoning \"...\"")
             merged.append(c)
-    if track in ("all", "macro"):
-        macro_items = list(_fetch_macro_challenges()) + list(_fetch_civic_numeric_challenges())
-        for c in macro_items:
-            if wanted and not _asset_matches(c, wanted):
-                continue
-            c = dict(c)
-            c["track"] = "macro_numeric"
-            c["submit_hint"] = ("macro-predict <id> --predicted-value <n> "
-                                "--predicted-std <n> --amount <n> [--rationale \"...\"] "
-                                "(needs credits:stake)")
-            merged.append(c)
-    if track == "civic":
+    if track in ("all", "macro", "civic"):
+        if track == "macro":
+            note("--track macro is a deprecated alias for --track civic (ADR-0004).")
         for c in _fetch_civic_challenges():
             if wanted and not _asset_matches(c, wanted):
                 continue
@@ -1277,13 +1319,11 @@ def cmd_financial_odds(args):
 
 
 def cmd_macro_challenges(args):
-    """Macro challenges (CPI/PPI/PMI/NFP/etc.) live under a separate endpoint
-    family and are never returned by `challenges`/`eval/challenges/active` —
-    poll this on its own cycle alongside financial/BTC/World Cup. Merges both
-    macro-numeric backends (see `_fetch_civic_numeric_challenges`) into one
-    list — from here they're the same thing."""
-    items = list(_fetch_macro_challenges()) + list(_fetch_civic_numeric_challenges())
-    out({"items": items, "total": len(items)})
+    """Deprecated command alias retained for existing automation."""
+    note("macro-challenges is deprecated; use `ha.py challenges --track civic`.")
+    cmd_challenges(argparse.Namespace(
+        track="civic", asset=None, status="open", public=True
+    ))
 
 
 def _macro_predict_body(args):
@@ -1292,16 +1332,15 @@ def _macro_predict_body(args):
 
 
 def cmd_macro_predict(args):
-    """Submit a macro numeric prediction AND stake credit into the pool in one
-    call — the backend binds predict+stake (no standalone /stake). The stake
-    lands in the bin for predicted_value, so it always matches the forecast.
-    Requires BOTH prediction:submit and credits:stake scopes; the latter is NOT
-    granted by default — run `ha.py scope --add credits:stake` first. Re-POSTing
-    for the same challenge_id revises both prediction and stake in place.
+    """Deprecated numeric-only alias for ``forecast``.
 
-    Transparently routes to whichever macro-numeric backend owns this
-    challenge_id — a 404 on the primary endpoint retries the secondary one
-    with an equivalent payload; the caller never needs to know or care which."""
+    The legacy route is attempted first so an already-open Legacy Macro round
+    keeps its frozen write contract. A 404 means the challenge is canonical
+    Civic and is retried against Human Forecast with the equivalent numeric
+    payload. New integrations should discover with ``--track civic`` and use
+    ``forecast`` for every outcome shape.
+    """
+    note("macro-predict is deprecated; use `ha.py forecast` for Civic Index rounds.")
     if args.predicted_std <= 0:
         fail("predicted-std must be > 0")
     if args.amount <= 0:
@@ -1409,8 +1448,8 @@ def _build_forecast_payload(shape, args, challenge):
 def cmd_forecast(args):
     """Submit a numeric / binary / ordered forecast to a Human Forecast
     (Civic Index) challenge — official-statistics targets like CPI,
-    unemployment, Loan Prime Rate, initial jobless claims. New in 1.31.0:
-    unlike `macro-predict` (numeric-only, kept for backward compatibility),
+    unemployment, Loan Prime Rate, initial jobless claims. Unlike the deprecated
+    numeric-only `macro-predict` compatibility alias,
     this discovers the challenge's frozen `outcome_shape` first via
     prediction-contract-v2 and only accepts the one correct payload shape
     for it — the server maps your statistic to a bin itself, so `--bin`/
@@ -1436,10 +1475,21 @@ def cmd_forecast(args):
             None,
         )
         if challenge is None:
-            fail(
-                "Challenge is not an open Human Forecast in prediction-contract-v2; "
-                "run `ha.py challenges --track civic` and use a listed challenge_id."
+            challenge = next(
+                (
+                    projected
+                    for projected in (
+                        _legacy_macro_as_civic(item) for item in _fetch_macro_challenges()
+                    )
+                    if projected and projected.get("id") == args.challenge_id
+                ),
+                None,
             )
+            if challenge is None:
+                fail(
+                    "Challenge is not an open Civic forecast in prediction-contract-v2 or "
+                    "the Legacy compatibility list; run `ha.py challenges --track civic`."
+                )
     elif status == 404:
         legacy_status, resp = http(
             "GET", api(f"/public/human-forecasts/challenges/{args.challenge_id}")
@@ -1450,6 +1500,23 @@ def cmd_forecast(args):
         fail("Prediction discovery is unavailable; forecast was not submitted.", status)
     shape = challenge.get("outcome_shape")
     forecast = _build_forecast_payload(shape, args, challenge)
+    if challenge.get("submission_route") == "macro_numeric_legacy":
+        if args.expected_revision is not None:
+            fail("--expected-revision is not supported by a Legacy compatibility round")
+        legacy_body = {
+            "predicted_value": forecast["mean"],
+            "predicted_std": forecast["std"],
+            "amount": args.amount,
+        }
+        if args.rationale:
+            legacy_body["rationale"] = args.rationale
+        status, resp = authed(
+            "POST", f"/eval/macro/challenges/{args.challenge_id}/predict", legacy_body
+        )
+        expect(status, resp)
+        out(resp)
+        return
+
     body = {
         "forecast": forecast,
         "amount": args.amount,
@@ -1473,10 +1540,11 @@ def cmd_forecast(args):
 
 
 def cmd_macro_odds(args):
+    note("macro-odds is a deprecated compatibility command for numeric rounds.")
     status, resp = http("GET", api(f"/eval/macro/challenges/{args.challenge_id}/odds"))
     if status == 404:
-        # The secondary macro-numeric backend has no staking pool to show
-        # odds for; its nearest equivalent is the public forecast consensus.
+        # Canonical Civic has no legacy pool-odds shape; its nearest equivalent
+        # is the public forecast consensus.
         status, resp = http(
             "GET", api(f"/public/human-forecasts/challenges/{args.challenge_id}/consensus")
         )
@@ -1663,12 +1731,12 @@ def main():
     u.add_argument("scope", nargs="+")
     u.set_defaults(func=cmd_unsubscribe)
 
-    c = sub.add_parser("challenges", help="List open prediction challenges (unified: financial + macro + civic)")
+    c = sub.add_parser("challenges", help="List open prediction challenges (financial + Civic Index)")
     c.add_argument("--status", default="open")
     c.add_argument("--track", choices=["all", "financial", "macro", "civic"], default="all",
-                   help="all (default, unchanged since 1.30.0): financial + numeric-only macro/civic; "
-                        "financial: ternary market only; macro: numeric only; "
-                        "civic: full-fidelity Human Forecast/Civic Index (numeric+binary+ordered, new in 1.31.0)")
+                   help="all (default): financial + Civic Index; financial: market only; "
+                        "civic: all official statistics/policy forecasts including open Legacy "
+                        "compatibility rounds; macro: deprecated alias for civic")
     c.add_argument("--asset", nargs="*", help="filter by asset/indicator symbols, e.g. GC BTC CPI")
     c.add_argument("--public", action="store_true", help="use the public financial list even when authenticated")
     c.set_defaults(func=cmd_challenges)
@@ -1689,10 +1757,10 @@ def main():
     fo.add_argument("challenge_id")
     fo.set_defaults(func=cmd_financial_odds)
 
-    mc = sub.add_parser("macro-challenges", help="List open macro numeric challenges (CPI/PPI/PMI/etc., public)")
+    mc = sub.add_parser("macro-challenges", help="Deprecated alias for `challenges --track civic`")
     mc.set_defaults(func=cmd_macro_challenges)
 
-    mp = sub.add_parser("macro-predict", help="Submit a macro prediction + bound credit stake (needs credits:stake)")
+    mp = sub.add_parser("macro-predict", help="Deprecated numeric-only alias for Civic forecast (preserves open legacy routes)")
     mp.add_argument("challenge_id")
     mp.add_argument("--predicted-value", required=True, type=float, dest="predicted_value")
     mp.add_argument("--predicted-std", required=True, type=float, dest="predicted_std")
@@ -1701,7 +1769,7 @@ def main():
     mp.add_argument("--rationale", default=None)
     mp.set_defaults(func=cmd_macro_predict)
 
-    mo = sub.add_parser("macro-odds", help="View current staking pool odds for a macro challenge")
+    mo = sub.add_parser("macro-odds", help="View compatibility pool/consensus for a numeric Civic or legacy challenge")
     mo.add_argument("challenge_id")
     mo.set_defaults(func=cmd_macro_odds)
 

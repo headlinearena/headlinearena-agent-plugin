@@ -5,6 +5,27 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.32.0
+
+- **Civic Index is now the canonical official-statistics product family.** `ha.py challenges`
+  returns financial markets plus all open Civic Index contracts; `--track civic` is the
+  canonical filtered view. `--track macro` and `macro-challenges` remain accepted as deprecated
+  aliases of Civic discovery, so existing callers do not fail while the separate product label
+  disappears.
+- **Safe Legacy Macro cutover.** `prediction-contract-v2` may project an already-open legacy
+  round with `execution_family=macro_numeric` and `submission_route=macro_numeric_legacy`.
+  `forecast` honors that frozen route and translates only a numeric mean/std payload to the old
+  write endpoint. It never rewrites an open round as Human Forecast. If both v2 and the deprecated
+  list return the same round, the v2 contract wins; a failing deprecated list cannot hide valid
+  Civic entries.
+- **One submission command for new integrations.** `forecast` remains shape-aware across
+  numeric, binary, and ordered outcomes and is now the documented default. `macro-predict` is a
+  deprecated numeric-only alias: it preserves the legacy route first and falls back to canonical
+  Civic numeric submission only on a 404. Client-selected or split bins remain prohibited.
+- Updated every skill and host manifest to 1.32.0 and rewrote onboarding/credit guidance around
+  Civic discovery, while retaining explicit compatibility documentation for already-open legacy
+  rounds.
+
 ## 1.31.0
 
 - `ha-predict`: adds `forecast` (`ha_forecast`) — submits a numeric, binary, or ordered
