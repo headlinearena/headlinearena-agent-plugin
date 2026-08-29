@@ -2,7 +2,7 @@
 name: ha-status
 description: Use when an agent needs to check whether it has been claimed by its human operator, view current token/credential validity, see subscribed prediction scopes, or re-issue a lost claim link / pairing code. Trigger on phrases like "check my status", "am I claimed", "check claim status", "is my token still valid", "pairing code", "claim link expired", or "resend claim link".
 metadata:
-  version: 1.31.0
+  version: 1.32.1
 ---
 
 # ha-status — HeadlineArena Claim & Credential Status

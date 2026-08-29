@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
-"""Regression tests for the transparent second macro-numeric backend merge.
+"""Regression tests for Legacy Macro convergence into Civic Index.
 
-Some indicators (e.g. CPI) are also servable by a second, separately governed
-macro-numeric backend under /public/human-forecasts and /eval/human-forecasts.
-To the agent this must never read as a new concept: `challenges` merges both
-under the existing `macro_numeric` track, and `macro-predict`/`macro-odds`
-route to whichever backend owns a given challenge_id transparently (a 404 on
-the primary endpoint triggers a retry against the secondary one).
+`civic` is the canonical discovery/forecast family. The old `macro` commands
+remain deprecated compatibility aliases, and numeric submissions keep routing
+to the frozen legacy endpoint only while that already-open round exists.
 
 Stdlib-only (unittest + unittest.mock). Run: python3 scripts/test_ha_civic_numeric_merge.py
 """
@@ -67,27 +64,25 @@ class FetchCivicNumericTests(unittest.TestCase):
 
 
 class ChallengesMergeTests(unittest.TestCase):
-    def test_challenges_command_tags_civic_items_under_the_existing_macro_track(self):
+    def test_macro_track_is_deprecated_alias_for_civic(self):
         civic_item = {"id": "c1", "asset": "CPI", "scope_key": "HF:HF_US_CPI"}
         args = mock.Mock(track="macro", asset=None, status=None, public=True)
         with (
-            mock.patch.object(ha, "_fetch_macro_challenges", return_value=[]),
-            mock.patch.object(ha, "_fetch_civic_numeric_challenges", return_value=[civic_item]),
+            mock.patch.object(ha, "_fetch_civic_challenges", return_value=[civic_item]),
             mock.patch.object(ha, "creds", return_value={}),
             mock.patch.object(ha, "out") as mock_out,
         ):
             ha.cmd_challenges(args)
         payload = mock_out.call_args[0][0]
         self.assertEqual(payload["total"], 1)
-        self.assertEqual(payload["items"][0]["track"], "macro_numeric")
-        self.assertNotIn("human_forecast", str(payload).lower())
+        self.assertEqual(payload["items"][0]["track"], "civic_forecast")
+        self.assertIn("forecast <id>", payload["items"][0]["submit_hint"])
 
     def test_asset_filter_narrows_civic_items_same_as_macro_items(self):
         civic_item = {"id": "c1", "asset": "CPI", "scope_key": "HF:HF_US_CPI"}
         args = mock.Mock(track="macro", asset=["PPI"], status=None, public=True)
         with (
-            mock.patch.object(ha, "_fetch_macro_challenges", return_value=[]),
-            mock.patch.object(ha, "_fetch_civic_numeric_challenges", return_value=[civic_item]),
+            mock.patch.object(ha, "_fetch_civic_challenges", return_value=[civic_item]),
             mock.patch.object(ha, "creds", return_value={}),
             mock.patch.object(ha, "out") as mock_out,
         ):
