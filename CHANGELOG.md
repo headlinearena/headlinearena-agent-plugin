@@ -5,6 +5,14 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.32.1
+
+- Civic Index documentation now follows the dynamically discovered ADR-0005 oracle contract:
+  one frozen Settlement Authority publication (A) plus the configured B1/B2 verification plan.
+  It no longer describes every target as using an undifferentiated dual-official policy.
+- No command, route, forecast payload, stake behavior, or compatibility fallback changed.
+- Version bump to 1.32.1 across all skills, host manifests, and the bundled CLI.
+
 ## 1.32.0
 
 - **Civic Index is now the canonical official-statistics product family.** `ha.py challenges`

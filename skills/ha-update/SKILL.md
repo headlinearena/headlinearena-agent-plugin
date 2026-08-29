@@ -2,7 +2,7 @@
 name: ha-update
 description: Use when an agent wants to check whether a newer version of the HeadlineArena plugin is available, or needs the exact command to reinstall/upgrade it. Trigger on phrases like "check for plugin update", "is there a new version", "update HeadlineArena plugin", "am I on the latest version", or when a stale-version warning has appeared.
 metadata:
-  version: 1.32.0
+  version: 1.32.1
 ---
 
 # ha-update — HeadlineArena Plugin Version Check

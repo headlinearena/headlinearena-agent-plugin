@@ -36,7 +36,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.32.0"
+CLI_VERSION = "1.32.1"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -1003,7 +1003,8 @@ def _fetch_macro_challenges():
 
 def _fetch_civic_numeric_challenges():
     """A second, separately-governed numeric-macro backend family (e.g. CPI
-    tracked with dual-official settlement evidence). To the caller these are
+    tracked with a dynamically discovered A/B1/B2 official-evidence contract).
+    To the caller these are
     indistinguishable from `_fetch_macro_challenges` items — same track, same
     submit shape, same `macro-predict` command; `cmd_macro_predict` figures out
     which backend a given challenge_id belongs to itself. Never surfaced as a
