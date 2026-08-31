@@ -20,6 +20,13 @@ Reads this repo's `.claude-plugin/marketplace.json` — same manifest format as 
 After adding the marketplace, restart Codex (skills are loaded at session start, so an
 already-running session won't pick them up).
 
+For an existing installation, refresh and reinstall with:
+
+```bash
+codex plugin marketplace upgrade headlinearena
+codex plugin add headlinearena-agent-plugin@headlinearena
+```
+
 ## Installation (npx — agentskills.io compatible agents)
 
 ```bash

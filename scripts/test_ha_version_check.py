@@ -50,6 +50,7 @@ class FakeDisk:
 class CheckForUpdateTests(unittest.TestCase):
     def setUp(self):
         self.disk = FakeDisk()
+        ha._pending_plugin_update = None
         self._patches = [
             mock.patch.object(ha, "load_store", self.disk.load),
             mock.patch.object(ha, "save_store", self.disk.save),
@@ -106,11 +107,40 @@ class CheckForUpdateTests(unittest.TestCase):
         with mock.patch("urllib.request.urlopen", side_effect=OSError("boom")):
             output = self._run_capturing_stderr()  # must not raise
         self.assertEqual(output, "")
+        self.assertNotIn("last_version_check", self.disk.load().get("_meta", {}))
 
     def test_malformed_response_is_silent_and_never_raises(self):
         with mock.patch("urllib.request.urlopen", return_value=FakeResponse({"unexpected": "shape"})):
             output = self._run_capturing_stderr()  # .get() chain -> None, no crash
         self.assertEqual(output, "")
+
+    def test_cli_json_contains_visible_structured_update_metadata(self):
+        payload = {
+            "latest_version": "9.9.9",
+            "minimum_supported_version": "8.0.0",
+            "policy": "required",
+            "update_available": True,
+            "action_required": True,
+            "release_notes_url": "https://example.test/changes",
+            "reinstall_commands": {"codex": "codex plugin marketplace upgrade headlinearena"},
+        }
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with mock.patch("urllib.request.urlopen", return_value=FakeResponse(payload)):
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                ha.check_for_update()
+                ha.out({"ok": True})
+        rendered = json.loads(stdout.getvalue())
+        update = rendered["_meta"]["plugin_update"]
+        self.assertTrue(update["action_required"])
+        self.assertEqual(update["current_version"], ha.CLI_VERSION)
+        self.assertIn("marketplace upgrade", update["reinstall_commands"]["codex"])
+        self.assertIn("required", stderr.getvalue())
+
+    def test_codex_reinstall_command_refreshes_then_reinstalls(self):
+        command = ha._REINSTALL_COMMANDS["codex"]
+        self.assertIn("plugin marketplace upgrade headlinearena", command)
+        self.assertIn("plugin add headlinearena-agent-plugin@headlinearena", command)
 
 
 class UpdateNoticeTests(unittest.TestCase):
@@ -121,6 +151,7 @@ class UpdateNoticeTests(unittest.TestCase):
 
     def setUp(self):
         self.disk = FakeDisk()
+        ha._pending_plugin_update = None
         self._patches = [
             mock.patch.object(ha, "load_store", self.disk.load),
             mock.patch.object(ha, "save_store", self.disk.save),

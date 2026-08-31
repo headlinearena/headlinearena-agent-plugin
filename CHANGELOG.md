@@ -5,6 +5,22 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.32.2
+
+- Update checks now use HeadlineArena's stable public release-policy endpoint first, with the
+  GitHub marketplace manifest retained as fallback. A failed check no longer consumes the
+  20-hour throttle window.
+- Every bundled CLI command surfaces an available update in visible structured JSON at
+  `_meta.plugin_update`, while keeping the existing stderr nudge for humans. Hermes uses the
+  same field. All skills require agents to relay it and forbid silent installers.
+- The policy carries `latest_version`, `minimum_supported_version`, severity and per-host
+  reinstall commands. Versions below the compatibility floor can keep reading but receive a
+  clear HTTP 426 with an upgrade command on writes.
+- Fixed the Codex update command: refresh the configured marketplace with
+  `codex plugin marketplace upgrade headlinearena`, then reinstall the plugin.
+- Bundled API calls now identify plugin version and host through `X-HA-Plugin-*` headers,
+  enabling owner-dashboard notices and adoption telemetry without exposing credentials.
+
 ## 1.32.1
 
 - Civic Index documentation now follows the dynamically discovered ADR-0005 oracle contract:
