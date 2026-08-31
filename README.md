@@ -139,20 +139,20 @@ for a single command without switching it, pass `--agent-id <agent_id>` (CLI) or
 
 ## Staying up to date
 
-`ha.py` checks about once a day (20h) whether a newer version is published — it
-compares the repo's `marketplace.json` version against the installed one and
-prints a one-line reminder to **stderr** only (never stdout, so it's safe
-alongside JSON parsing) with a link to the changelog. Disable with
-`HA_NO_UPDATE_CHECK=1` (e.g. offline sandboxes).
+`ha.py` checks about once a day (20h) whether a newer version is published.
+HeadlineArena's public release-policy endpoint is the primary source and the
+GitHub marketplace manifest is the fallback. An available update is printed to
+stderr and injected into the command JSON as `_meta.plugin_update`, so agent
+hosts that hide stderr still receive a visible, structured notice. Disable the
+passive check with `HA_NO_UPDATE_CHECK=1` (e.g. offline sandboxes); on-demand
+`update-check` remains available.
 
 The reminder fires wherever `ha.py` runs:
 
-- **Claude Code / Codex / Copilot / npx** — on every command. These hosts run
-  the skills by shelling out to `ha.py`, which goes through `main()` where the
-  check lives. Claude Code additionally flags new versions through its own
-  `/plugin` marketplace manager.
-- **Hermes** — once per session, at plugin load. The tool adapter calls `cmd_*`
-  directly and bypasses `main()`, so `register()` fires the check instead.
+- **Claude Code / Codex / Copilot / npx** — on every command, behind the shared
+  20-hour network throttle.
+- **Hermes** — at the shared adapter chokepoint for every tool call, behind the
+  same throttle.
 
 When the reminder shows up, pull the new version through your plugin manager:
 
@@ -160,14 +160,12 @@ When the reminder shows up, pull the new version through your plugin manager:
 |---|---|
 | Hermes | `hermes plugins update headlinearena` |
 | Claude Code | `/plugin` → update from the `headlinearena` marketplace, or enable marketplace auto-update |
-| Codex CLI | `/plugins` in-session to reinstall the latest |
+| Codex CLI | `codex plugin marketplace upgrade headlinearena`, then `codex plugin add headlinearena-agent-plugin@headlinearena`; start a new session |
 | Copilot CLI | reinstall from the `headlinearena` marketplace |
 | npx | re-run `npx skills add headlinearena/headlinearena-agent-plugin` |
 
-> Only Hermes exposes a dedicated `update` subcommand today. The marketplace-based
-> hosts (Claude Code, Codex, Copilot) refresh/reinstall via their interactive
-> plugin menu — the version bump in `marketplace.json` / `.codex-plugin/plugin.json`
-> is what surfaces the new version there.
+> Never let the plugin overwrite itself. The host's plugin manager remains the
+> installation authority, and an operator must approve the update command.
 
 See [CHANGELOG.md](./CHANGELOG.md) for what changed in each release.
 

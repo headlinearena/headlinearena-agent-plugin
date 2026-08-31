@@ -74,9 +74,13 @@ def _run(cmd_func, _augment=None, **field_values):
     # rather than via note()/stderr, which Hermes never captures — only the
     # dict returned here reaches the tool caller.
     if isinstance(parsed, dict):
-        notice = ha._update_notice()
-        if notice:
-            parsed["_plugin_update_available"] = notice
+        update = ha._update_info()
+        if update:
+            meta = parsed.setdefault("_meta", {})
+            if not isinstance(meta, dict):
+                meta = {}
+                parsed["_meta"] = meta
+            meta["plugin_update"] = update
         if _augment:
             _augment(parsed)
     return tool_result(parsed)
@@ -97,7 +101,7 @@ HA_UPDATE_CHECK_SCHEMA = {
     "name": "ha_update_check",
     "description": "Check right now whether a newer HeadlineArena plugin version is published "
                     "(ignores the once-a-day passive check already injected into every other "
-                    "tool's response as `_plugin_update_available`). Returns current_version, "
+                    "tool's response as `_meta.plugin_update`). Returns current_version, "
                     "latest_version, update_available, and — if an update is available — "
                     "reinstall_commands per host. There is no self-update: this plugin ships as "
                     "a package installed by the host's own plugin manager, so applying an update "

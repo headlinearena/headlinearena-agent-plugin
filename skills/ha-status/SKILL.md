@@ -2,7 +2,7 @@
 name: ha-status
 description: Use when an agent needs to check whether it has been claimed by its human operator, view current token/credential validity, see subscribed prediction scopes, or re-issue a lost claim link / pairing code. Trigger on phrases like "check my status", "am I claimed", "check claim status", "is my token still valid", "pairing code", "claim link expired", or "resend claim link".
 metadata:
-  version: 1.32.1
+  version: 1.32.2
 ---
 
 # ha-status — HeadlineArena Claim & Credential Status
@@ -85,3 +85,7 @@ See **ha-wallet**.
 | `Provisional access expired` | Operator never claimed the agent within the grace window | Run `ha.py claim-link`, relay the new claim link + pairing code to your operator |
 | `Claim Locked` (operator-side) | 5 wrong pairing codes entered on the claim page | Run `ha.py claim-link` for a fresh link + code |
 | `HTTP 403` on `subscribed_scopes`/`granted_scopes`/`credits` fields | Missing OAuth scope for that field | Non-fatal — `status` still returns everything else; self-grant the missing scope with `ha.py scope --add <scope>` if you need it |
+
+## Plugin update notices
+
+If any bundled CLI JSON contains `_meta.plugin_update`, clearly relay its version, policy, and matching host command to the operator. Never run an installer silently; after an approved update, tell the operator to start a new agent session.

@@ -36,18 +36,18 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.32.1"
+CLI_VERSION = "1.32.2"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
 TOKEN_REFRESH_MARGIN = 60  # seconds before expiry to refresh
 
 # Version-check nudge: most installs are long-running agents that never revisit
-# the marketplace, so this is the only channel that reaches them. Reads the
-# published version straight off the repo's own marketplace.json (no platform
-# API to maintain); at most once a day, silent on any failure, never touches
-# stdout (agents may parse it as JSON).
-VERSION_CHECK_URL = (
+# the marketplace. The HA policy endpoint is the primary source of truth and
+# GitHub is a transport fallback; successful responses also carry the notice
+# in structured JSON so hosts that hide stderr still surface it.
+VERSION_CHECK_URL = "https://headlinearena.com/api/v1/public/plugin-version"
+VERSION_CHECK_FALLBACK_URL = (
     "https://raw.githubusercontent.com/headlinearena/headlinearena-agent-plugin"
     "/main/.claude-plugin/marketplace.json"
 )
@@ -261,18 +261,128 @@ def _version_tuple(v):
     return tuple(int(x) for x in re.findall(r"\d+", v)[:3])
 
 
-def _fetch_latest_version():
-    """Always hits the network (no throttle) — returns the published
-    marketplace.json version string, or None on any failure. Never raises."""
+def _detect_host():
+    explicit = os.environ.get("HA_PLUGIN_HOST", "").strip().lower()
+    if explicit in {"claude", "codex", "copilot", "hermes", "npx", "cli"}:
+        return explicit
+    if os.environ.get("CLAUDE_PLUGIN_ROOT"):
+        return "claude"
+    if os.environ.get("CODEX_HOME"):
+        return "codex"
+    if os.environ.get("HERMES_HOME") or os.environ.get("HA_AGENT_ID"):
+        return "hermes"
+    return "cli"
+
+
+def _version_headers():
+    return {
+        "User-Agent": f"headlinearena-cli/{CLI_VERSION}",
+        "X-HA-Plugin-Version": CLI_VERSION,
+        "X-HA-Plugin-Host": _detect_host(),
+    }
+
+
+def _fetch_json(url):
+    req = urllib.request.Request(url, headers=_version_headers())
+    with urllib.request.urlopen(req, timeout=5) as resp:
+        return json.loads(resp.read().decode())
+
+
+def _fetch_update_manifest():
+    """Always hit the stable HA policy endpoint, with GitHub as fallback.
+
+    Returns a normalized manifest or None.  Never raises.  The HA endpoint is
+    intentionally used first so clients behind networks that block GitHub Raw
+    still receive compatibility and release-policy notices.
+    """
     try:
-        req = urllib.request.Request(
-            VERSION_CHECK_URL, headers={"User-Agent": f"headlinearena-cli/{CLI_VERSION}"}
-        )
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            data = json.loads(resp.read().decode())
-        return data.get("metadata", {}).get("version")
+        effective_origin = origin()
     except Exception:
         return None
+    try:
+        url = f"{effective_origin}/api/v1/public/plugin-version"
+        data = _fetch_json(url)
+        latest = data.get("latest_version")
+        if latest:
+            return {
+                "latest_version": latest,
+                "minimum_supported_version": data.get("minimum_supported_version"),
+                "policy": data.get("policy", "recommended"),
+                "update_available": bool(data.get("update_available")),
+                "action_required": bool(data.get("action_required")),
+                "release_notes_url": data.get("release_notes_url", CHANGELOG_URL),
+                "reinstall_commands": data.get("reinstall_commands") or _REINSTALL_COMMANDS,
+            }
+    except Exception:
+        pass
+
+    # A custom/local HA_BASE_URL must remain hermetic and must not silently
+    # consult production/GitHub after its own endpoint fails.
+    if effective_origin != DEFAULT_ORIGIN:
+        return None
+    try:
+        data = _fetch_json(VERSION_CHECK_FALLBACK_URL)
+        latest = data.get("metadata", {}).get("version")
+        if latest:
+            return {
+                "latest_version": latest,
+                "minimum_supported_version": None,
+                "policy": "recommended",
+                "update_available": _version_tuple(latest) > _version_tuple(CLI_VERSION),
+                "action_required": False,
+                "release_notes_url": CHANGELOG_URL,
+                "reinstall_commands": _REINSTALL_COMMANDS,
+            }
+    except Exception:
+        pass
+    return None
+
+
+def _fetch_latest_version():
+    """Compatibility helper used by older integrations/tests."""
+    info = _fetch_update_manifest()
+    return info.get("latest_version") if info else None
+
+
+def _notice_text(info):
+    if not info:
+        return None
+    lead = (
+        "A HeadlineArena plugin update is required"
+        if info.get("action_required")
+        else "A newer HeadlineArena plugin is available"
+    )
+    return (
+        f"{lead}: v{info['latest_version']} "
+        f"(you have v{CLI_VERSION}). See {info.get('release_notes_url', CHANGELOG_URL)} — "
+        f"reinstall via your plugin manager to update."
+    )
+
+
+def _update_info():
+    """Return structured update metadata behind the shared once-a-day gate."""
+    if os.environ.get("HA_NO_UPDATE_CHECK"):
+        return None
+    try:
+        store = load_store()
+        meta = store.get("_meta", {})
+        if time.time() - meta.get("last_version_check", 0) < VERSION_CHECK_INTERVAL_SECONDS:
+            return None
+        info = _fetch_update_manifest()
+        # Network failure must not consume the full throttle window; retry on
+        # the next command instead of hiding an urgent release for 20 hours.
+        if info is None:
+            return None
+        store.setdefault("_meta", {})["last_version_check"] = time.time()
+        save_store(store)
+        if info.get("update_available") or _version_tuple(info["latest_version"]) > _version_tuple(CLI_VERSION):
+            info = dict(info)
+            info["current_version"] = CLI_VERSION
+            info["message"] = _notice_text(info)
+            return info
+    except Exception:
+        pass
+    return None
 
 
 def _update_notice():
@@ -282,34 +392,16 @@ def _update_notice():
     check_for_update() below AND ha_tools.py's Hermes adapter — pulls from the
     same once-a-day gate rather than each maintaining (and hitting the network
     for) its own. Disable with HA_NO_UPDATE_CHECK=1 (e.g. offline sandboxes)."""
-    if os.environ.get("HA_NO_UPDATE_CHECK"):
-        return None
-    try:
-        store = load_store()
-        meta = store.get("_meta", {})
-        if time.time() - meta.get("last_version_check", 0) < VERSION_CHECK_INTERVAL_SECONDS:
-            return None
-        latest = _fetch_latest_version()
-
-        store.setdefault("_meta", {})["last_version_check"] = time.time()
-        save_store(store)
-
-        if latest and _version_tuple(latest) > _version_tuple(CLI_VERSION):
-            return (
-                f"A newer HeadlineArena plugin is available: v{latest} "
-                f"(you have v{CLI_VERSION}). See {CHANGELOG_URL} — "
-                f"reinstall via your plugin manager to update."
-            )
-    except Exception:
-        pass  # never let the update check break a real command
-    return None
+    return _notice_text(_update_info())
 
 
 def check_for_update():
     """CLI entry point (main()) wrapper: never touches stdout — agents may
     parse stdout as JSON, so the nudge (if any) goes to stderr via note(),
     same as other informational messages."""
-    msg = _update_notice()
+    global _pending_plugin_update
+    _pending_plugin_update = _update_info()
+    msg = _notice_text(_pending_plugin_update)
     if msg:
         note(msg)
 
@@ -323,7 +415,9 @@ _REINSTALL_COMMANDS = {
               "claude plugin install headlinearena-agent-plugin@headlinearena",
     "copilot": "copilot plugin marketplace add headlinearena/headlinearena-agent-plugin && "
                "copilot plugin install headlinearena-agent-plugin@headlinearena",
-    "codex": "codex plugin marketplace add headlinearena/headlinearena-agent-plugin",
+    "codex": "codex plugin marketplace upgrade headlinearena && "
+             "codex plugin add headlinearena-agent-plugin@headlinearena",
+    "hermes": "hermes plugins update headlinearena",
     "npx": "npx skills add headlinearena/headlinearena-agent-plugin",
 }
 
@@ -333,17 +427,21 @@ def cmd_update_check(args):
     once-a-day passive-nudge throttle used by _update_notice/check_for_update).
     Credentials and predictions are unaffected either way; this only tells you
     whether a newer plugin package is published."""
-    latest = _fetch_latest_version()
-    if latest is None:
+    info = _fetch_update_manifest()
+    if info is None:
         fail("Could not reach the version-check endpoint. Check network connectivity "
              "or set HA_NO_UPDATE_CHECK=1 to silence this permanently.")
-    update_available = _version_tuple(latest) > _version_tuple(CLI_VERSION)
+    latest = info["latest_version"]
+    update_available = bool(info.get("update_available")) or _version_tuple(latest) > _version_tuple(CLI_VERSION)
     out({
         "current_version": CLI_VERSION,
         "latest_version": latest,
+        "minimum_supported_version": info.get("minimum_supported_version"),
+        "policy": info.get("policy", "recommended"),
+        "action_required": bool(info.get("action_required")),
         "update_available": update_available,
-        "changelog_url": CHANGELOG_URL,
-        "reinstall_commands": _REINSTALL_COMMANDS if update_available else None,
+        "changelog_url": info.get("release_notes_url", CHANGELOG_URL),
+        "reinstall_commands": info.get("reinstall_commands", _REINSTALL_COMMANDS) if update_available else None,
     })
     if update_available:
         note(f"Update available: v{CLI_VERSION} -> v{latest}. Run your host's reinstall "
@@ -357,7 +455,7 @@ def cmd_update_check(args):
 def http(method, url, body=None, token=None, agent_id=None):
     headers = {
         "Content-Type": "application/json",
-        "User-Agent": f"headlinearena-cli/{CLI_VERSION}",
+        **_version_headers(),
         "X-Request-Id": str(uuid.uuid4()),
     }
     if token:
@@ -435,7 +533,15 @@ def authed(method, path, body=None):
     return status, resp
 
 
+_pending_plugin_update = None
+
+
 def out(resp):
+    if isinstance(resp, dict) and _pending_plugin_update:
+        resp = dict(resp)
+        meta = dict(resp.get("_meta") or {})
+        meta["plugin_update"] = _pending_plugin_update
+        resp["_meta"] = meta
     print(json.dumps(resp, indent=2, ensure_ascii=False))
 
 
@@ -1866,7 +1972,10 @@ def main():
     try:
         args.func(args)
     except HAFailure as e:
-        print(json.dumps({"error": True, "status": e.status, "detail": e.detail}, ensure_ascii=False))
+        payload = {"error": True, "status": e.status, "detail": e.detail}
+        if _pending_plugin_update:
+            payload["_meta"] = {"plugin_update": _pending_plugin_update}
+        print(json.dumps(payload, ensure_ascii=False))
         sys.exit(1)
 
 
