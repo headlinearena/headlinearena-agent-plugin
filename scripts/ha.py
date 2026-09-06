@@ -36,7 +36,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.32.2"
+CLI_VERSION = "1.33.0"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -1085,16 +1085,31 @@ def _fetch_financial_challenges(args):
     status != 200 fallback below already covers a genuinely still-pending
     agent (authed() 403s, falls back to public) just as safely."""
     entry = creds()
-    if args.public or not (entry.get("agent_id") and entry.get("client_secret")):
-        resp = _public_challenges(args.status)
+    status_filter = getattr(args, "status", "open")
+    if (args.public or status_filter != "open"
+            or not (entry.get("agent_id") and entry.get("client_secret"))):
+        resp = _public_challenges(status_filter)
     else:
         status, resp = authed("GET", "/eval/challenges/active")
         if status != 200:  # fall back to the public list
-            resp = _public_challenges(args.status)
+            resp = _public_challenges(status_filter)
     items = resp.get("items", resp.get("challenges", []))
     # /eval/challenges/active wraps each item as {challenge: {...}, context: {...}}
-    return [dict(i["challenge"], context=i.get("context")) if "challenge" in i else i
-            for i in items]
+    items = [dict(i["challenge"], context=i.get("context")) if "challenge" in i else i
+             for i in items]
+    if getattr(args, "include_post_close", False):
+        # The authenticated active endpoint intentionally contains only OPEN
+        # challenges. Closed and resolved financial rounds are public so an
+        # agent can keep recording its own market view after the scored window.
+        for post_close_status in ("closed", "resolved"):
+            if post_close_status == status_filter:
+                continue
+            post_close = _public_challenges(post_close_status)
+            items.extend(post_close.get("items", post_close.get("challenges", [])))
+    # A round may be returned by more than one source during a scheduler
+    # transition. Preserve first-seen ordering while never showing it twice.
+    seen = set()
+    return [item for item in items if item.get("id") and not (item["id"] in seen or seen.add(item["id"]))]
 
 
 def _fetch_macro_challenges():
@@ -1341,8 +1356,20 @@ def cmd_challenges(args):
                 continue
             c = dict(c)
             c["track"] = "financial"
-            c["submit_hint"] = ("predict <id> --direction bullish|bearish|neutral "
-                                "--confidence 0.0-1.0 --reasoning \"...\"")
+            if c.get("status") in ("closed", "resolved"):
+                c["submission_mode"] = "paper_trade"
+                c["counts_for_score"] = False
+                c["paper_trade_note"] = (
+                    "Post-close market signal only: it never affects settlement, score, "
+                    "credit, or leaderboard. Do not pass --amount; wait at least 60 seconds "
+                    "before another signal for this challenge."
+                )
+                c["submit_hint"] = ("predict <id> --direction bullish|bearish|neutral "
+                                    "--confidence 0.0-1.0 --reasoning \"...\" "
+                                    "(paper-trade signal; no --amount)")
+            else:
+                c["submit_hint"] = ("predict <id> --direction bullish|bearish|neutral "
+                                    "--confidence 0.0-1.0 --reasoning \"...\"")
             merged.append(c)
     if track in ("all", "macro", "civic"):
         if track == "macro":
@@ -1367,6 +1394,13 @@ def cmd_challenges(args):
             "civic_forecast": sum(1 for c in merged if c["track"] == "civic_forecast"),
         },
     }
+    if getattr(args, "include_post_close", False):
+        payload["paper_trade_hint"] = (
+            "closed/resolved financial items are available for continued paper-trade market "
+            "signals only. Their counts_for_score=false means they never change settlement, "
+            "score, credit, or leaderboard; omit --amount. Read your saved signals with "
+            "`ha.py paper-signals <challenge_id>` (or the ha_paper_signals tool)."
+        )
     # The authenticated financial view is filtered to YOUR subscribed scopes —
     # a fresh agent has none, sees financial: 0, and concludes the platform has
     # no market challenges even while the public site shows several open ones.
@@ -1415,6 +1449,25 @@ def cmd_predict(args):
             note(f"Not subscribed to scope {scope_key}; subscribing and retrying.")
             authed("POST", f"/agent/prediction-scope/{scope_key}")
             status, resp = authed("POST", path, body)
+    expect(status, resp)
+    if resp.get("counts_for_score") is False:
+        note(
+            "Paper-trade signal recorded — it does not affect settlement, score, credit, or "
+            f"leaderboard. Review this challenge's signal history with `ha.py paper-signals {args.challenge_id}`."
+        )
+    out(resp)
+
+
+def cmd_paper_signals(args):
+    """Read this agent's own post-close paper-trade signals for one challenge."""
+    if not 1 <= args.limit <= 100:
+        fail("--limit must be between 1 and 100")
+    query = f"?limit={args.limit}"
+    if args.cursor:
+        query += f"&cursor={urllib.parse.quote(args.cursor)}"
+    status, resp = authed(
+        "GET", f"/eval/challenges/{args.challenge_id}/paper-signals{query}"
+    )
     expect(status, resp)
     out(resp)
 
@@ -1838,7 +1891,7 @@ def main():
     u.add_argument("scope", nargs="+")
     u.set_defaults(func=cmd_unsubscribe)
 
-    c = sub.add_parser("challenges", help="List open prediction challenges (financial + Civic Index)")
+    c = sub.add_parser("challenges", help="List prediction challenges (open by default; can include post-close financial signals)")
     c.add_argument("--status", default="open")
     c.add_argument("--track", choices=["all", "financial", "macro", "civic"], default="all",
                    help="all (default): financial + Civic Index; financial: market only; "
@@ -1846,6 +1899,11 @@ def main():
                         "compatibility rounds; macro: deprecated alias for civic")
     c.add_argument("--asset", nargs="*", help="filter by asset/indicator symbols, e.g. GC BTC CPI")
     c.add_argument("--public", action="store_true", help="use the public financial list even when authenticated")
+    c.add_argument(
+        "--include-post-close", action="store_true",
+        help="also list closed/resolved financial challenges that accept paper-trade signals only "
+             "(counts_for_score=false; no stake)",
+    )
     c.set_defaults(func=cmd_challenges)
 
     pr = sub.add_parser("predict", help="Submit a prediction")
@@ -1859,6 +1917,12 @@ def main():
                     help="optional credit stake bound to this prediction, landing in the --direction bin "
                          "(needs credits:stake — self-grant with `ha.py scope --add credits:stake`)")
     pr.set_defaults(func=cmd_predict)
+
+    ps = sub.add_parser("paper-signals", help="Read your own post-close paper-trade signals for a financial challenge")
+    ps.add_argument("challenge_id")
+    ps.add_argument("--limit", type=int, default=20)
+    ps.add_argument("--cursor", default=None)
+    ps.set_defaults(func=cmd_paper_signals)
 
     fo = sub.add_parser("odds", help="View current staking pool odds for a financial challenge")
     fo.add_argument("challenge_id")

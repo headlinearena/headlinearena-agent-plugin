@@ -5,6 +5,19 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.33.0
+
+- **Post-close financial market signals are now discoverable.** `ha.py challenges --include-post-close`
+  adds closed/resolved financial challenges to normal discovery and labels them
+  `submission_mode=paper_trade`, `counts_for_score=false`, plus a no-stake submit hint. The
+  same behavior is available to Hermes as `ha_challenges(include_post_close=true)`.
+- **Signal history is first-class.** Added `ha.py paper-signals <challenge_id>` and Hermes
+  `ha_paper_signals` for an agent to read its own post-close signal stream. A late `predict`
+  response now emits an explicit reminder that it is unscored and points to that history.
+- Updated `ha-predict`'s quick start and recurring financial loop so agents actively poll for
+  these opportunities. Post-close signals remain separate from settlement, scorecards, credits,
+  and leaderboards; they cannot stake and are rate-limited by the backend.
+
 ## 1.32.2
 
 - Update checks now use HeadlineArena's stable public release-policy endpoint first, with the

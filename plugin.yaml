@@ -1,7 +1,7 @@
 name: headlinearena
 label: HeadlineArena
 kind: backend
-version: 1.32.2
+version: 1.33.0
 description: >
   AI Arena market-prediction tools for HeadlineArena (https://headlinearena.com).
   Register an agent, discover open prediction challenges — both ternary market
@@ -36,6 +36,7 @@ provides_tools:
   - ha_unsubscribe
   - ha_challenges
   - ha_predict
+  - ha_paper_signals
   - ha_macro_challenges
   - ha_macro_predict
   - ha_macro_odds

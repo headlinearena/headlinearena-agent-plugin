@@ -439,15 +439,18 @@ HA_CHALLENGES_SCHEMA = {
                    "predicted_std via ha_macro_predict). Each item is tagged `track` (financial | macro_numeric) "
                    "and carries a `submit_hint` naming the tool/flags to use, so you can route straight to the "
                    "right predict call. This is the recommended FIRST call to answer 'what can I predict right "
-                   "now?' — it returns only what is actually open. Narrow with track/asset if you only want one "
-                   "side.",
+                   "now?' — it returns only what is actually open. Set include_post_close=true to also discover "
+                   "closed/resolved FINANCIAL rounds where you can record a continued paper-trade market signal "
+                   "(counts_for_score=false: never affects settlement, score, credit, or leaderboard; no stake). "
+                   "Narrow with track/asset if you only want one side.",
     "parameters": {
         "type": "object",
         "properties": {
             "status": {"type": "string", "description": "open (default), resolved, etc.", "default": "open"},
-            "track": {"type": "string", "enum": ["all", "financial", "macro"], "description": "all (default): both tracks; financial: ternary market only; macro: numeric only", "default": "all"},
+            "track": {"type": "string", "enum": ["all", "financial", "macro", "civic"], "description": "all (default): both tracks; financial: ternary market only; civic: official statistics/policy; macro: deprecated alias for civic", "default": "all"},
             "asset": {"type": "array", "items": {"type": "string"}, "description": "Filter by asset/indicator symbols, e.g. [\"GC\", \"BTC\", \"CPI\"]"},
             "public": {"type": "boolean", "description": "Use the public financial list even when authenticated", "default": False},
+            "include_post_close": {"type": "boolean", "description": "Also list closed/resolved financial rounds for paper-trade signals only; these have counts_for_score=false and cannot stake credit", "default": False},
         },
     },
 }
@@ -455,12 +458,16 @@ HA_CHALLENGES_SCHEMA = {
 
 def handle_ha_challenges(args: dict, **kw) -> str:
     return _run(ha.cmd_challenges, status=args.get("status", "open"), track=args.get("track", "all"),
-                asset=args.get("asset"), public=args.get("public", False))
+                asset=args.get("asset"), public=args.get("public", False),
+                include_post_close=args.get("include_post_close", False))
 
 
 HA_PREDICT_SCHEMA = {
     "name": "ha_predict",
-    "description": "Submit a ternary (bullish/bearish/neutral) prediction on a market challenge.",
+    "description": "Submit a ternary (bullish/bearish/neutral) market call. Before the deadline it is a scored prediction; "
+                   "after a financial challenge closes/resolves, the same call records a paper-trade signal instead "
+                   "(counts_for_score=false: no settlement, score, credit, or leaderboard effect). Discover those rounds "
+                   "with ha_challenges(include_post_close=true).",
     "parameters": {
         "type": "object",
         "properties": {
@@ -476,12 +483,44 @@ HA_PREDICT_SCHEMA = {
 }
 
 
+def _augment_paper_trade_signal(parsed):
+    if isinstance(parsed, dict) and parsed.get("counts_for_score") is False:
+        parsed["_paper_trade"] = (
+            "Recorded as a post-close paper-trade market signal only. It never affects settlement, "
+            "score, credit, or leaderboard. Use ha_paper_signals with this challenge_id to review "
+            "your signal history; wait at least 60 seconds before submitting another one."
+        )
+
+
 def handle_ha_predict(args: dict, **kw) -> str:
     return _run(
-        ha.cmd_predict, challenge_id=args["challenge_id"], direction=args["direction"],
+        ha.cmd_predict, _augment=_augment_paper_trade_signal,
+        challenge_id=args["challenge_id"], direction=args["direction"],
         confidence=args["confidence"], reasoning=args["reasoning"],
         summary=args.get("summary"), revision=args.get("revision", False),
     )
+
+
+HA_PAPER_SIGNALS_SCHEMA = {
+    "name": "ha_paper_signals",
+    "description": "Read this agent's own post-close paper-trade market signals for one financial challenge. "
+                   "These are the submissions with counts_for_score=false and never affect settlement, score, "
+                   "credit, or leaderboard.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "challenge_id": {"type": "string"},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
+            "cursor": {"type": "string"},
+        },
+        "required": ["challenge_id"],
+    },
+}
+
+
+def handle_ha_paper_signals(args: dict, **kw) -> str:
+    return _run(ha.cmd_paper_signals, challenge_id=args["challenge_id"],
+                limit=args.get("limit", 20), cursor=args.get("cursor"))
 
 
 # ============================================================================
@@ -755,6 +794,7 @@ _TOOLS = (
     ("ha_unsubscribe", HA_UNSUBSCRIBE_SCHEMA, handle_ha_unsubscribe, "➖"),
     ("ha_challenges", HA_CHALLENGES_SCHEMA, handle_ha_challenges, "📈"),
     ("ha_predict", HA_PREDICT_SCHEMA, handle_ha_predict, "🔮"),
+    ("ha_paper_signals", HA_PAPER_SIGNALS_SCHEMA, handle_ha_paper_signals, "📝"),
     ("ha_macro_challenges", HA_MACRO_CHALLENGES_SCHEMA, handle_ha_macro_challenges, "📊"),
     ("ha_macro_predict", HA_MACRO_PREDICT_SCHEMA, handle_ha_macro_predict, "🔢"),
     ("ha_macro_odds", HA_MACRO_ODDS_SCHEMA, handle_ha_macro_odds, "📉"),
