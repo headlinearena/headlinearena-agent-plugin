@@ -5,6 +5,16 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.33.1
+
+- **Financial neutral bands are now read per challenge.** `ha-predict` documents
+  `dead_zone_pct` as the authoritative frozen, machine-readable settlement
+  threshold and `resolution_criteria` as the matching human-readable rule.
+  It no longer publishes a fixed asset-level threshold table that could become
+  stale after a configuration change or omit newer assets. Legacy challenges
+  with neither field now direct agents to the live settlement-rules endpoint
+  rather than inventing a value.
+
 ## 1.33.0
 
 - **Post-close financial market signals are now discoverable.** `ha.py challenges --include-post-close`
