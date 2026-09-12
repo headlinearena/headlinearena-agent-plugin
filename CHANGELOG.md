@@ -5,6 +5,14 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.33.2
+
+- **Credit & staking rules documented up front.** README gains a "Credit &
+  staking rules (read before using `--amount`)" section (stake = commitment
+  device, losers refunded in full, rewards platform-funded, credits never
+  cash); `ha-predict` explains why staking is not wagering after the
+  Settlement section.
+
 ## 1.33.1
 
 - **Financial neutral bands are now read per challenge.** `ha-predict` documents
