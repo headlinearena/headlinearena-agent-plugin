@@ -311,6 +311,7 @@ class ForecastArgs:
         self.challenge_id = kw.get("challenge_id", "c1")
         self.mean = kw.get("mean")
         self.std = kw.get("std")
+        self.samples = kw.get("samples")
         self.yes_probability = kw.get("yes_probability")
         self.probability = kw.get("probability")
         self.amount = kw.get("amount", 10)
@@ -614,6 +615,63 @@ class MacroPredictShapeMismatchHintTests(unittest.TestCase):
                     challenge_id="c1", predicted_value=3.4, predicted_std=0.15, amount=10, rationale=None,
                 ))
         self.assertNotIn("ha.py forecast", str(ctx.exception))
+
+
+
+class SamplesEncodingTests(unittest.TestCase):
+    def test_samples_inline_comma_separated(self):
+        payload = ha._build_forecast_payload(
+            "numeric_distribution",
+            ForecastArgs(samples="3.0,3.1,2.9,3.0,3.2,2.8,3.05,3.15,2.95,3.0"),
+            NUMERIC_ITEM,
+        )
+        self.assertEqual(sorted(payload), ["samples"])
+        self.assertEqual(len(payload["samples"]), 10)
+
+    def test_samples_file_json_array(self):
+        import json as _json
+        import tempfile
+
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as fh:
+            _json.dump([3.0 + i / 100 for i in range(12)], fh)
+            path = fh.name
+        payload = ha._build_forecast_payload(
+            "numeric_distribution", ForecastArgs(samples="@" + path), NUMERIC_ITEM
+        )
+        self.assertEqual(len(payload["samples"]), 12)
+
+    def test_samples_and_mean_std_are_mutually_exclusive(self):
+        with self.assertRaises(ha.HAFailure):
+            ha._build_forecast_payload(
+                "numeric_distribution",
+                ForecastArgs(samples="3.0," * 9 + "3.0", mean=3.0, std=0.1),
+                NUMERIC_ITEM,
+            )
+
+    def test_samples_count_bounds_enforced(self):
+        with self.assertRaises(ha.HAFailure):
+            ha._build_forecast_payload(
+                "numeric_distribution", ForecastArgs(samples="3.0,3.1,2.9"), NUMERIC_ITEM
+            )
+        too_many = ",".join(["3.0"] * 1001)
+        with self.assertRaises(ha.HAFailure):
+            ha._build_forecast_payload(
+                "numeric_distribution", ForecastArgs(samples=too_many), NUMERIC_ITEM
+            )
+
+    def test_samples_reject_non_finite_and_non_numbers(self):
+        with self.assertRaises(ha.HAFailure):
+            ha._build_forecast_payload(
+                "numeric_distribution",
+                ForecastArgs(samples="3.0,3.1,2.9,3.0,3.2,2.8,3.05,3.15,2.95,nan"),
+                NUMERIC_ITEM,
+            )
+        with self.assertRaises(ha.HAFailure):
+            ha._build_forecast_payload(
+                "numeric_distribution",
+                ForecastArgs(samples="3.0,3.1,2.9,3.0,3.2,2.8,3.05,3.15,2.95,abc"),
+                NUMERIC_ITEM,
+            )
 
 
 if __name__ == "__main__":

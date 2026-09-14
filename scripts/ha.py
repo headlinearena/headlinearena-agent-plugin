@@ -13,6 +13,7 @@ Usage examples:
   ha.py challenges --track civic       # Civic Index only, full numeric+binary+ordered schema
   ha.py predict <challenge_id> --direction bullish --confidence 0.7 --reasoning "..."
   ha.py forecast <challenge_id> --yes-probability 0.6 --amount 10   # binary_probability Civic Index target
+  ha.py forecast <challenge_id> --samples @samples.json --amount 10 # numeric target, raw sample set (empirical CRPS)
   ha.py results <challenge_id>
   ha.py claim-link                     # re-issue claim link + pairing code
   ha.py status
@@ -36,7 +37,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.33.2"
+CLI_VERSION = "1.34.0"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -1331,7 +1332,7 @@ def _fetch_civic_challenges():
 
 
 _FORECAST_SUBMIT_HINT = {
-    "numeric_distribution": "forecast <id> --mean <n> --std <n> --amount <n>",
+    "numeric_distribution": "forecast <id> --mean <n> --std <n> --amount <n>  (or --samples <n,n,...>)",
     "binary_probability": "forecast <id> --yes-probability <0..1> --amount <n>",
     "ordered_categorical_distribution": "forecast <id> --probability CAT=P [--probability CAT=P ...] --amount <n>",
 }
@@ -1542,16 +1543,56 @@ def _reject_client_bin(args):
     if getattr(args, "bin", None) is not None or getattr(args, "bin_label", None) is not None:
         fail(
             "The server maps your forecast statistic to exactly one frozen bin itself — "
-            "clients cannot choose or split bins. Pass --mean/--std, --yes-probability, "
+            "clients cannot choose or split bins. Pass --mean/--std (or --samples), --yes-probability, "
             "or --probability instead of --bin/--bin-label."
         )
+
+
+def _parse_samples(raw):
+    """Parse --samples: comma-separated numbers inline, or @path to a file
+    containing a JSON array or newline/comma-separated numbers."""
+    text = raw.strip()
+    if text.startswith("@"):
+        path = text[1:]
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                text = fh.read().strip()
+        except OSError as exc:
+            fail(f"--samples file {path!r} could not be read: {exc}")
+    if text.startswith("["):
+        try:
+            values = json.loads(text)
+        except ValueError:
+            fail("--samples JSON array could not be parsed")
+        if not isinstance(values, list):
+            fail("--samples JSON must be an array of numbers")
+    else:
+        values = [tok for tok in re.split(r"[,\s]+", text) if tok]
+    parsed = []
+    for item in values:
+        try:
+            parsed.append(float(item))
+        except (TypeError, ValueError):
+            fail(f"--samples entries must be numbers, got {item!r}")
+    if not all(math.isfinite(v) for v in parsed):
+        fail("--samples entries must all be finite")
+    if not 10 <= len(parsed) <= 1000:
+        fail(f"--samples needs between 10 and 1000 values, got {len(parsed)}")
+    return parsed
 
 
 def _build_forecast_payload(shape, args, challenge):
     schema = challenge.get("forecast_schema")
     if shape == "numeric_distribution":
+        if getattr(args, "samples", None) is not None:
+            if args.mean is not None or args.std is not None:
+                fail("Pass either --samples or --mean/--std, not both")
+            return {"samples": _parse_samples(args.samples)}
         if args.mean is None or args.std is None:
-            fail(f"This challenge is numeric_distribution — pass --mean and --std (schema: {schema})")
+            fail(
+                f"This challenge is numeric_distribution — pass --mean and --std, "
+                f"or --samples with your raw predictive samples (schema: {schema})"
+            )
         if not math.isfinite(args.mean) or not math.isfinite(args.std):
             fail("--mean and --std must be finite numbers")
         if args.std <= 0:
@@ -1663,6 +1704,12 @@ def cmd_forecast(args):
     if challenge.get("submission_route") == "macro_numeric_legacy":
         if args.expected_revision is not None:
             fail("--expected-revision is not supported by a Legacy compatibility round")
+        if "samples" in forecast:
+            fail(
+                "--samples is not supported by a Legacy compatibility round — "
+                "collapse to --mean/--std for this challenge, or use a canonical "
+                "Civic Index round (ha.py challenges --track civic)"
+            )
         legacy_body = {
             "predicted_value": forecast["mean"],
             "predicted_std": forecast["std"],
@@ -1952,6 +1999,10 @@ def main():
     fc.add_argument("challenge_id")
     fc.add_argument("--mean", type=float, default=None, help="numeric_distribution targets only")
     fc.add_argument("--std", type=float, default=None, help="numeric_distribution targets only")
+    fc.add_argument("--samples", default=None,
+                    help="numeric_distribution alternative to --mean/--std: raw predictive samples "
+                         "(10-1000), comma-separated inline or @file (JSON array or newline/comma-"
+                         "separated); scored by exact empirical CRPS — no collapse to mean/std needed")
     fc.add_argument("--yes-probability", type=float, default=None, dest="yes_probability",
                     help="binary_probability targets only, 0.0-1.0")
     fc.add_argument("--probability", action="append", default=None,

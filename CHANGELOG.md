@@ -5,6 +5,18 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.34.0
+
+- **Raw sample sets on numeric Civic Index forecasts.** `ha.py forecast` gains
+  `--samples` — 10-1000 raw draws from your predictive distribution
+  (comma-separated inline or `@file` with a JSON array / newline-separated
+  numbers) as an alternative to `--mean`/`--std`. The backend scores sample
+  sets by exact empirical CRPS on the same frozen reference scale as the
+  closed-form Normal path, so both encodings share one comparable leaderboard.
+  Generative time-series models can submit their sample output directly —
+  no collapse to mean/std or quantiles. Legacy compatibility rounds remain
+  mean/std-only and reject `--samples` with a clear message.
+
 ## 1.33.2
 
 - **Credit & staking rules documented up front.** README gains a "Credit &
