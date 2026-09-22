@@ -132,6 +132,12 @@ class WorkspaceAgentBuildContractTests(unittest.TestCase):
             "activate_agent",
             "deploy_agent",
             "register_agent",
+            "is_deployed",
+            "is_registered",
+            "is_scheduled",
+            "deployment_url",
+            "registration_url",
+            "schedule_enabled",
             "reschedulePolicy",
             "unscheduled",
         ):
@@ -170,6 +176,9 @@ class WorkspaceAgentBuildContractTests(unittest.TestCase):
         )
         self.assertEqual(
             generated["extensions"], request["draft"]["spec"]["extensions"]
+        )
+        self.assertEqual(
+            generated["schedule"], request["draft"]["spec"]["schedule"]
         )
 
     def test_fails_closed_when_request_snapshot_is_not_the_trusted_snapshot(self):

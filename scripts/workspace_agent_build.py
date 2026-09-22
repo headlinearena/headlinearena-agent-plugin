@@ -78,49 +78,48 @@ FORBIDDEN_CREDENTIAL_PREFIXES = {
     "password",
     "secret",
 }
-FORBIDDEN_LIFECYCLE_KEYS = {
+FORBIDDEN_LIFECYCLE_COMPONENTS = {
     "activate",
     "activated",
     "activation",
+    "deploy",
+    "deployed",
+    "deployment",
+    "register",
+    "registered",
+    "registration",
+    "schedule",
+    "scheduled",
+    "scheduling",
+    "unscheduled",
+}
+FORBIDDEN_LIFECYCLE_ALIASES = {
     "activationstate",
     "activationstatus",
     "activateagent",
-    "deploy",
-    "deployed",
     "deployedat",
     "deployagent",
-    "deployment",
     "deploymentid",
     "deploymentstate",
     "deploymentstatus",
     "executionmode",
-    "register",
-    "registered",
     "registeredat",
     "registeragent",
-    "registration",
     "registrationid",
     "registrationstate",
     "registrationstatus",
     "reschedulepolicy",
-    "schedule",
-    "scheduled",
     "scheduledat",
     "schedulepolicy",
     "schedulestate",
     "schedulestatus",
-    "scheduling",
     "schedulingpolicy",
-    "unscheduled",
 }
-LIFECYCLE_NOUNS = {"activation", "deployment", "registration", "schedule"}
-LIFECYCLE_STATUS_FIELDS = {"id", "state", "status"}
-LIFECYCLE_PAST_TENSE = {"activated", "deployed", "registered", "scheduled"}
-LIFECYCLE_ACTION_VERBS = {"activate", "deploy", "register"}
 ALLOWED_CONTRACT_KEY_PATHS = {
     "request.idempotency_key",
     "request.draft.spec.schedule",
 }
+ALLOWED_EXACT_KEYS = {"activation_function"}
 
 
 class ContractError(ValueError):
@@ -180,23 +179,11 @@ def _forbidden_key(components):
             alphanumeric.startswith(prefix)
             for prefix in FORBIDDEN_CREDENTIAL_PREFIXES
         )
-        or alphanumeric in FORBIDDEN_LIFECYCLE_KEYS
         or any(
-            component in LIFECYCLE_NOUNS
-            and index + 1 < len(components)
-            and components[index + 1] in LIFECYCLE_STATUS_FIELDS
-            for index, component in enumerate(components)
+            component in FORBIDDEN_LIFECYCLE_COMPONENTS
+            for component in components
         )
-        or any(
-            component in LIFECYCLE_PAST_TENSE
-            and index + 1 < len(components)
-            and components[index + 1] == "at"
-            for index, component in enumerate(components)
-        )
-        or any(
-            component in LIFECYCLE_ACTION_VERBS and index + 1 < len(components)
-            for index, component in enumerate(components)
-        )
+        or alphanumeric in FORBIDDEN_LIFECYCLE_ALIASES
     )
 
 
@@ -207,6 +194,7 @@ def _reject_forbidden_fields(value, path="request"):
             components = _key_components(key)
             if (
                 field_path not in ALLOWED_CONTRACT_KEY_PATHS
+                and key not in ALLOWED_EXACT_KEYS
                 and _forbidden_key(components)
             ):
                 raise ContractError(
