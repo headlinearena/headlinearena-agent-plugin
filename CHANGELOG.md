@@ -2,8 +2,25 @@
 
 All notable changes to the HeadlineArena agent plugin are documented here.
 Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/marketplace.json`,
-`.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
-versioning rules in `CLAUDE.md`.
+`.codex-plugin/plugin.json`, `plugin.yaml`, `scripts/ha.py`'s `CLI_VERSION`, and the scaffold
+builder's `BUILDER_VERSION` — see the versioning rules in `CLAUDE.md`.
+
+## 1.35.0
+
+- **Guided forecasting-agent builder.** Added `ha-build-agent` for requests such as
+  “help me build an agent to make forecasts.” It first distinguishes HeadlineArena
+  guided setup from user-led customization, then captures objective, target and
+  horizon, outcome shape, data policy, schedule, evaluation, and operating policy.
+- **Auditable offline scaffold.** Added the stdlib-only
+  `scripts/scaffold_forecast_agent.py`, which validates a fixed v1 schema and creates
+  `forecast-agent.json` plus `AGENT.md` without making network calls. It supports
+  ternary, binary, numeric, and ordered outcomes; enforces the Forecasting for Good
+  eligibility gate; blocks path traversal and symlink escapes; and refuses existing
+  output paths unless replacement is explicitly requested.
+- Building files remains separate from registration, deployment, scheduling, credit
+  use, and forecast submission. The workflow hands those approved actions to the
+  existing `ha-register`, `ha-wallet`, and `ha-predict` capabilities instead of
+  inventing backend endpoints.
 
 ## 1.34.0
 

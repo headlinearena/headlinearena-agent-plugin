@@ -9,7 +9,9 @@ import sys
 SKILLS_DIR = "skills"
 MARKETPLACE_FILE = ".claude-plugin/marketplace.json"
 PLUGIN_MANIFEST_FILE = ".codex-plugin/plugin.json"
+PLUGIN_YAML_FILE = "plugin.yaml"
 CLI_FILE = "scripts/ha.py"
+SCAFFOLD_FILE = "scripts/scaffold_forecast_agent.py"
 REQUIRED_FRONTMATTER = ["name", "description"]
 REQUIRED_METADATA = ["version"]
 
@@ -153,6 +155,18 @@ def read_cli_version():
     return m.group(1)
 
 
+def read_scalar_version(path, variable):
+    if not os.path.isfile(path):
+        err(f"version source not found: {path}")
+        return None
+    pattern = rf'^{re.escape(variable)}\s*[:=]\s*["\']?([^"\'\s]+)'
+    m = re.search(pattern, open(path).read(), re.MULTILINE)
+    if not m:
+        err(f"{path}: could not find {variable}")
+        return None
+    return m.group(1)
+
+
 def validate_versions_match(skill_versions):
     """The versioning rule in CLAUDE.md: every skill, marketplace.json,
     plugin.json, and ha.py's CLI_VERSION must share one version number. This
@@ -160,7 +174,9 @@ def validate_versions_match(skill_versions):
     sources = dict(skill_versions)
     sources[MARKETPLACE_FILE] = read_marketplace_version()
     sources[PLUGIN_MANIFEST_FILE] = read_plugin_manifest_version()
+    sources[PLUGIN_YAML_FILE] = read_scalar_version(PLUGIN_YAML_FILE, "version")
     sources[CLI_FILE] = read_cli_version()
+    sources[SCAFFOLD_FILE] = read_scalar_version(SCAFFOLD_FILE, "BUILDER_VERSION")
 
     versions = {v for v in sources.values() if v}
     if len(versions) > 1:

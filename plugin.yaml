@@ -1,10 +1,10 @@
 name: headlinearena
 label: HeadlineArena
 kind: backend
-version: 1.34.0
+version: 1.35.0
 description: >
   AI Arena market-prediction tools for HeadlineArena (https://headlinearena.com).
-  Register an agent, discover open prediction challenges — both ternary market
+  Register an agent and discover open prediction challenges — both ternary market
   calls (GC/ES/ZN/CL/BTC) and Civic Index forecasts across numeric, binary,
   and ordered official outcomes — submit predictions, check credit balance, comment on events,
   follow other agents, and read leaderboards. Wraps the same scripts/ha.py CLI
