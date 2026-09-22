@@ -70,6 +70,26 @@ FORBIDDEN_KEY_COMPONENTS = {
     "tokens",
 }
 FORBIDDEN_NORMALIZED_KEYS = {"execution_mode", "executionmode"}
+FORBIDDEN_ALNUM_FRAGMENTS = {
+    "accesstoken",
+    "apikey",
+    "apisecret",
+    "authentication",
+    "authorization",
+    "authheader",
+    "authtoken",
+    "bearer",
+    "clientsecret",
+    "credential",
+    "encryptionkey",
+    "idtoken",
+    "password",
+    "privatekey",
+    "refreshtoken",
+    "secret",
+    "secretkey",
+    "signingkey",
+}
 ALLOWED_CONTRACT_KEY_PATHS = {
     "request.idempotency_key",
     "request.draft.spec.schedule",
@@ -121,8 +141,18 @@ def _key_components(key):
 
 
 def _forbidden_component(component):
-    return component in FORBIDDEN_KEY_COMPONENTS or component.startswith(
-        ("activat", "deploy", "register", "schedul")
+    return component in FORBIDDEN_KEY_COMPONENTS or any(
+        stem in component for stem in ("activat", "deploy", "registr", "schedul")
+    )
+
+
+def _forbidden_key(components):
+    normalized = "_".join(components)
+    alphanumeric = "".join(components)
+    return (
+        normalized in FORBIDDEN_NORMALIZED_KEYS
+        or any(_forbidden_component(component) for component in components)
+        or any(fragment in alphanumeric for fragment in FORBIDDEN_ALNUM_FRAGMENTS)
     )
 
 
@@ -131,13 +161,9 @@ def _reject_forbidden_fields(value, path="request"):
         for key, nested in value.items():
             field_path = f"{path}.{key}"
             components = _key_components(key)
-            normalized = "_".join(components)
-            if field_path not in ALLOWED_CONTRACT_KEY_PATHS and (
-                normalized in FORBIDDEN_NORMALIZED_KEYS
-                or any(
-                    _forbidden_component(component)
-                    for component in components
-                )
+            if (
+                field_path not in ALLOWED_CONTRACT_KEY_PATHS
+                and _forbidden_key(components)
             ):
                 raise ContractError(
                     f"{field_path} is not allowed in a build envelope"

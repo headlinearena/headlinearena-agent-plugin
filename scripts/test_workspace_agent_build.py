@@ -97,6 +97,15 @@ class WorkspaceAgentBuildContractTests(unittest.TestCase):
 
     def test_rejects_credentials_modes_and_lifecycle_claims_in_request(self):
         for key in (
+            "apikey",
+            "openaiapikey",
+            "accesstoken",
+            "authorizationheader",
+            "clientsecret",
+            "secretkey",
+            "password",
+            "privatekey",
+            "registrationid",
             "openai_api_key",
             "bearer_token",
             "credentialStore",
@@ -106,6 +115,8 @@ class WorkspaceAgentBuildContractTests(unittest.TestCase):
             "registration_id",
             "scheduled",
             "activation",
+            "reschedulePolicy",
+            "unscheduled",
         ):
             with self.subTest(key=key):
                 request = copy.deepcopy(self.fixture["request"])
@@ -121,6 +132,10 @@ class WorkspaceAgentBuildContractTests(unittest.TestCase):
     def test_allows_legitimate_agent_spec_keys(self):
         request = copy.deepcopy(self.fixture["request"])
         request["draft"]["spec"]["operation"]["max_credits_per_run"] = 5
+        request["draft"]["spec"]["extensions"] = {
+            "monkeypox_signal": "public-health indicator",
+            "tokenization_method": "document preprocessing",
+        }
         result = self.build(request)
         self.assertEqual(result["draft"]["status"], "draft")
 
