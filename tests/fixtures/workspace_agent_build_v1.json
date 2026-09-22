@@ -1,6 +1,18 @@
 {
   "description": "Provider fixture for an offline hosted Workspace AgentDraft build",
+  "fixture_metadata": {
+    "surface": "internal_provider",
+    "plugin_snapshot": "synthetic_contract_test_value"
+  },
   "produced_at": "2026-09-22T12:00:00Z",
+  "trusted_plugin_snapshot": {
+    "name": "headlinearena-agent-plugin",
+    "version": "1.36.0",
+    "commit_sha": "0123456789abcdef0123456789abcdef01234567",
+    "skill": "ha-build-agent",
+    "manifest_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "archive_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+  },
   "request": {
     "contract_version": "workspace-conversation-v1",
     "request_id": "req_agent_draft_001",
@@ -9,8 +21,8 @@
     "task_kind": "agent_draft",
     "plugin_snapshot": {
       "name": "headlinearena-agent-plugin",
-      "version": "1.35.0",
-      "commit_sha": "762f693b2153f1ab451415a20fe05d50f04c8255",
+      "version": "1.36.0",
+      "commit_sha": "0123456789abcdef0123456789abcdef01234567",
       "skill": "ha-build-agent",
       "manifest_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
       "archive_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
@@ -80,8 +92,8 @@
     "task_kind": "agent_draft",
     "plugin_snapshot": {
       "name": "headlinearena-agent-plugin",
-      "version": "1.35.0",
-      "commit_sha": "762f693b2153f1ab451415a20fe05d50f04c8255",
+      "version": "1.36.0",
+      "commit_sha": "0123456789abcdef0123456789abcdef01234567",
       "skill": "ha-build-agent",
       "manifest_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
       "archive_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
@@ -96,7 +108,7 @@
         {
           "path": "forecast-agents/gold-macro-monitor/forecast-agent.json",
           "media_type": "application/json",
-          "digest": "sha256:3c913d2c799d208cfd8491bd07afaecb9879501a5260a83d694339a7fbef61cd",
+          "digest": "sha256:b473467020cd179437225418321ce24bfb782360b847a82091f1a4b0392e0387",
           "size_bytes": 1541
         },
         {

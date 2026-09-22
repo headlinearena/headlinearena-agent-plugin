@@ -14,11 +14,12 @@ import os
 import re
 import stat
 import sys
+from decimal import Decimal
 from pathlib import Path
 
 
 SCHEMA_VERSION = 1
-BUILDER_VERSION = "1.35.0"
+BUILDER_VERSION = "1.36.0"
 MAX_SPEC_BYTES = 1024 * 1024
 TOP_LEVEL_FIELDS = {
     "schema_version",
@@ -286,15 +287,52 @@ def _reject_json_constant(value):
     raise SpecError(f"spec contains non-finite JSON number: {value}")
 
 
+def _canonical_number(value):
+    if isinstance(value, int):
+        return str(value)
+    if not math.isfinite(value):
+        raise SpecError("spec contains a non-finite JSON number")
+    decimal = Decimal(repr(value))
+    if decimal == 0:
+        return "0"
+    rendered = format(decimal, "f")
+    if "." in rendered:
+        rendered = rendered.rstrip("0").rstrip(".")
+    return rendered
+
+
+def _canonical_json(value):
+    """Serialize JSON with sorted keys and exponent-free normalized numbers."""
+    if value is None:
+        return "null"
+    if value is True:
+        return "true"
+    if value is False:
+        return "false"
+    if isinstance(value, (int, float)):
+        return _canonical_number(value)
+    if isinstance(value, str):
+        return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    if isinstance(value, list):
+        return "[" + ",".join(_canonical_json(item) for item in value) + "]"
+    if isinstance(value, dict):
+        if any(not isinstance(key, str) for key in value):
+            raise SpecError("spec object keys must be strings")
+        return "{" + ",".join(
+            f"{_canonical_json(key)}:{_canonical_json(value[key])}"
+            for key in sorted(value)
+        ) + "}"
+    raise SpecError(f"spec contains unsupported JSON value: {type(value).__name__}")
+
+
+def canonical_spec_bytes(spec):
+    """Return cross-runtime canonical bytes for a normalized v1 specification."""
+    return _canonical_json(spec).encode("utf-8")
+
+
 def canonical_spec_digest(spec):
     """Return the stable digest of a validated, normalized v1 specification."""
-    canonical = json.dumps(
-        spec,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return f"sha256:{hashlib.sha256(canonical).hexdigest()}"
+    return f"sha256:{hashlib.sha256(canonical_spec_bytes(spec)).hexdigest()}"
 
 
 def _file_manifest_entry(relative_path, media_type, content):
@@ -305,6 +343,18 @@ def _file_manifest_entry(relative_path, media_type, content):
         "digest": f"sha256:{hashlib.sha256(encoded).hexdigest()}",
         "size_bytes": len(encoded),
     }
+
+
+def validate_utc_timestamp(value, path="--created-at"):
+    if not isinstance(value, str) or not re.fullmatch(
+        r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", value
+    ):
+        raise SpecError(f"{path} must use UTC format YYYY-MM-DDTHH:MM:SSZ")
+    try:
+        dt.datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ")
+    except ValueError as exc:
+        raise SpecError(f"{path} is not a valid UTC timestamp") from exc
+    return value
 
 
 def render_instructions(spec):
@@ -547,8 +597,7 @@ def scaffold_data(raw_spec, workspace_path, output_arg=None, created_at=None):
         .isoformat()
         .replace("+00:00", "Z")
     )
-    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", timestamp):
-        raise SpecError("--created-at must use UTC format YYYY-MM-DDTHH:MM:SSZ")
+    timestamp = validate_utc_timestamp(timestamp)
     rendered_spec = {
         **spec,
         "audit": {

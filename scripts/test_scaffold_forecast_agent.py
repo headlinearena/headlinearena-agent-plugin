@@ -150,7 +150,7 @@ class ScaffoldTests(unittest.TestCase):
         self.assertEqual(result["network_calls"], 0)
         generated = json.loads((output / "forecast-agent.json").read_text(encoding="utf-8"))
         self.assertEqual(generated["schema_version"], 1)
-        self.assertEqual(generated["audit"]["builder_version"], "1.35.0")
+        self.assertEqual(generated["audit"]["builder_version"], "1.36.0")
         self.assertEqual(generated["audit"]["created_at"], "2026-09-22T12:00:00Z")
         instructions = (output / "AGENT.md").read_text(encoding="utf-8")
         self.assertIn("not registered, deployed, scheduled, or running", instructions)

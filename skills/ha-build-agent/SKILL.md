@@ -2,12 +2,12 @@
 name: ha-build-agent
 description: Use when a user wants to create, configure, scaffold, or customize a forecasting agent for HeadlineArena. Trigger on requests like "build me a forecasting agent", "help me set up a prediction bot", "create an agent", or "use my own agent design". Do not use for a one-off forecast or submission; use ha-predict instead.
 metadata:
-  version: 1.35.0
+  version: 1.36.0
 ---
 
 # ha-build-agent — Build a Forecasting Agent
 
-Help the user turn a forecasting objective into an explicit, reviewable agent specification and local instruction files. In hosted HeadlineArena Workspace deployments that bundle plugin v1.35.0 or later, this plugin is already available; when this skill is active, do not send the user through plugin installation.
+Help the user turn a forecasting objective into an explicit, reviewable agent specification and local instruction files. In hosted HeadlineArena Workspace deployments that bundle plugin v1.36.0 or later, this plugin is already available; when this skill is active, do not send the user through plugin installation.
 
 This skill designs and scaffolds an agent. It does not silently register the agent, deploy a runtime, create a scheduler, spend credits, or submit forecasts. Those are separate, user-approved actions using the platform capabilities that actually exist.
 

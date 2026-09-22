@@ -5,6 +5,18 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, `scripts/ha.py`'s `CLI_VERSION`, and the scaffold
 builder's `BUILDER_VERSION` — see the versioning rules in `CLAUDE.md`.
 
+## 1.36.0
+
+- **Hosted Workspace AgentDraft provider contract.** Added the internal,
+  offline `workspace-conversation-v1` build envelope, an exact provider fixture,
+  canonical spec and generated-file digests, and a trusted plugin snapshot
+  dependency. The adapter accepts no credentials, execution-mode fields, or
+  deployment, registration, schedule, or activation lifecycle claims.
+- The hosted adapter keeps the existing secure scaffolder as the only write
+  path. Workspace references remain opaque, all reported paths are relative,
+  and existing destinations, symlinks, traversal, overwrite, and network access
+  remain fail-closed.
+
 ## 1.35.0
 
 - **Guided forecasting-agent builder.** Added `ha-build-agent` for requests such as

@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Skills for building and operating forecasting agents on HeadlineArena — guided agent setup, registration, auth, predictions, credits, and evaluation",
-    "version": "1.35.0",
+    "version": "1.36.0",
     "repository": "https://github.com/headlinearena/headlinearena-agent-plugin"
   },
   "plugins": [

@@ -38,6 +38,7 @@ class WorkspaceAgentBuildContractTests(unittest.TestCase):
         return workspace_build.build_agent_draft(
             request or copy.deepcopy(self.fixture["request"]),
             self.workspace,
+            copy.deepcopy(self.fixture["trusted_plugin_snapshot"]),
             self.fixture["produced_at"],
         )
 
@@ -96,19 +97,41 @@ class WorkspaceAgentBuildContractTests(unittest.TestCase):
 
     def test_rejects_credentials_modes_and_lifecycle_claims_in_request(self):
         for key in (
-            "client_secret",
-            "accessToken",
+            "openai_api_key",
+            "bearer_token",
+            "credentialStore",
+            "client-secret",
             "execution_mode",
-            "deployed",
-            "registration",
+            "deployment_status",
+            "registration_id",
+            "scheduled",
+            "activation",
         ):
             with self.subTest(key=key):
                 request = copy.deepcopy(self.fixture["request"])
-                request["draft"]["spec"]["extensions"][key] = "not-allowed"
+                request["draft"]["spec"]["extensions"] = {
+                    "provider": {"nested": [{key: "not-allowed"}]}
+                }
                 with self.assertRaisesRegex(
                     workspace_build.ContractError, "not allowed"
                 ):
-                    workspace_build.validate_request(request)
+                    self.build(request)
+                self.assertFalse((self.workspace / "forecast-agents").exists())
+
+    def test_allows_legitimate_agent_spec_keys(self):
+        request = copy.deepcopy(self.fixture["request"])
+        request["draft"]["spec"]["operation"]["max_credits_per_run"] = 5
+        result = self.build(request)
+        self.assertEqual(result["draft"]["status"], "draft")
+
+    def test_fails_closed_when_request_snapshot_is_not_the_trusted_snapshot(self):
+        request = copy.deepcopy(self.fixture["request"])
+        request["plugin_snapshot"]["commit_sha"] = "f" * 40
+        with self.assertRaisesRegex(
+            workspace_build.ContractError, "trusted bundle metadata"
+        ):
+            self.build(request)
+        self.assertFalse((self.workspace / "forecast-agents").exists())
 
     def test_requires_exact_plugin_snapshot_and_lowercase_wire_enums(self):
         mutations = [
@@ -166,6 +189,49 @@ class WorkspaceAgentBuildContractTests(unittest.TestCase):
             self.fixture["expected_result"]["draft"]["spec_digest"],
             scaffold.canonical_spec_digest(scaffold.validate_spec(spec)),
         )
+
+    def test_spec_digest_normalizes_equivalent_json_numbers(self):
+        spec = copy.deepcopy(self.fixture["request"]["draft"]["spec"])
+
+        def digest_for(value):
+            candidate = copy.deepcopy(spec)
+            candidate["operation"]["max_credits_per_run"] = value
+            normalized = scaffold.validate_spec(candidate)
+            return scaffold.canonical_spec_digest(normalized)
+
+        self.assertEqual(digest_for(0), digest_for(0.0))
+        self.assertEqual(digest_for(1000), digest_for(1e3))
+        self.assertIn(
+            b'"max_credits_per_run":0.0000001',
+            scaffold.canonical_spec_bytes(
+                scaffold.validate_spec(
+                    {
+                        **spec,
+                        "operation": {
+                            **spec["operation"],
+                            "max_credits_per_run": 1e-7,
+                        },
+                    }
+                )
+            ),
+        )
+
+    def test_rejects_semantically_impossible_timestamp_before_writing(self):
+        for produced_at in (
+            "2026-02-30T12:00:00Z",
+            "2026-09-22T25:00:00Z",
+        ):
+            with self.subTest(produced_at=produced_at):
+                with self.assertRaisesRegex(
+                    workspace_build.ContractError, "valid UTC timestamp"
+                ):
+                    workspace_build.build_agent_draft(
+                        copy.deepcopy(self.fixture["request"]),
+                        self.workspace,
+                        copy.deepcopy(self.fixture["trusted_plugin_snapshot"]),
+                        produced_at,
+                    )
+                self.assertFalse((self.workspace / "forecast-agents").exists())
 
 
 if __name__ == "__main__":

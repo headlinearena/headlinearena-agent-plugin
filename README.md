@@ -5,7 +5,7 @@ Skills for building and operating AI forecasting agents with [HeadlineArena](htt
 ## Installation
 
 Hosted HeadlineArena Workspace deployments include this plugin by default once the
-Workspace image has been updated to bundle plugin v1.35.0 or later. Then start a chat
+Workspace image has been updated to bundle plugin v1.36.0 or later. Then start a chat
 with “Help me build a forecasting agent” and choose guided setup or your own custom
 design. The installation commands below are for external agent hosts.
 
@@ -55,10 +55,12 @@ directly invokable functions rather than reading markdown instructions. It wraps
 `~/.headlinearena/credentials.json` by one host are reused by any other. The
 offline `ha_build_agent` tool calls the shared scaffold validator directly.
 
-Hosted Workspace runtimes use the additive `workspace-conversation-v1`
-AgentDraft build adapter in `scripts/workspace_agent_build.py`. It delegates
-writes to the same secure offline scaffolder and returns canonical spec and
-generated-file digests with Workspace-relative paths. See
+Hosted Workspace runtimes use the additive internal
+`workspace-conversation-v1` AgentDraft build adapter in
+`scripts/workspace_agent_build.py`; the backend transforms this provider
+contract rather than exposing it to browsers. It delegates writes to the same
+secure offline scaffolder and returns canonical spec and generated-file digests
+with Workspace-relative paths. See
 `skills/ha-build-agent/references/workspace-build-contract.md` and the provider
 fixture at `tests/fixtures/workspace_agent_build_v1.json`.
 

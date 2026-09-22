@@ -1,6 +1,6 @@
 # Hosted Workspace AgentDraft Build Contract
 
-This provider contract is for a HeadlineArena Workspace runtime that has already
+This internal provider contract is for a HeadlineArena Workspace runtime that has already
 verified and pinned the plugin bundle. It creates draft files only. It does not
 register, deploy, activate, schedule, fund, or submit an agent, and it performs
 no network calls.
@@ -8,6 +8,12 @@ no network calls.
 The contract version is `workspace-conversation-v1`. The embedded Agent
 Specification remains schema version integer `1`; these two versions describe
 different boundaries.
+
+This is not the browser Workspace API contract. The browser never invokes this
+script or supplies plugin metadata. The backend/control plane validates the
+browser command, resolves tenant and idempotency state, constructs this internal
+request, invokes the provider, and transforms the result into its persisted
+`AgentDraft` and immutable `AgentVersion` models.
 
 ## Request
 
@@ -20,8 +26,8 @@ different boundaries.
   "task_kind": "agent_draft",
   "plugin_snapshot": {
     "name": "headlinearena-agent-plugin",
-    "version": "1.35.0",
-    "commit_sha": "762f693b2153f1ab451415a20fe05d50f04c8255",
+    "version": "1.36.0",
+    "commit_sha": "0123456789abcdef0123456789abcdef01234567",
     "skill": "ha-build-agent",
     "manifest_digest": "sha256:<64 lowercase hex characters>",
     "archive_digest": "sha256:<64 lowercase hex characters>"
@@ -62,7 +68,7 @@ The offline builder does not keep a second idempotency store.
   "task_kind": "agent_draft",
   "plugin_snapshot": {
     "name": "headlinearena-agent-plugin",
-    "version": "1.35.0",
+    "version": "1.36.0",
     "commit_sha": "<40 lowercase hex characters>",
     "skill": "ha-build-agent",
     "manifest_digest": "sha256:<64 lowercase hex characters>",
@@ -97,8 +103,10 @@ All returned paths are relative to the trusted Workspace root, and every file
 path is beneath `output_directory`. Digests use `sha256:<64 lowercase hex>`.
 `spec_digest` hashes the validated and normalized v1 spec as UTF-8 JSON with
 keys sorted, no insignificant whitespace, and non-ASCII characters preserved.
-It excludes generated audit timestamps. File digests hash the exact generated
-UTF-8 bytes and therefore bind the audit metadata too.
+JSON numbers use their shortest lossless decimal value expanded without exponent
+notation; integral floats and negative zero normalize to integers. It excludes
+generated audit timestamps. File digests hash the exact generated UTF-8 bytes
+and therefore bind the audit metadata too.
 
 The result intentionally omits the idempotency key, Workspace reference,
 credentials, absolute paths, execution mode, and deployment or registration
@@ -112,14 +120,19 @@ directory, then invoke:
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workspace_agent_build.py" \
   --request /path/to/agent-draft-request.json \
+  --trusted-snapshot /run/headlinearena/verified-plugin-snapshot.json \
   --workspace /path/to/trusted-tenant-workspace
 ```
 
 The adapter validates the envelope and calls the same
 `scaffold_forecast_agent.scaffold_data` function used by the standalone and
-Hermes builders. The runtime must verify the pinned bundle's name, version,
-full commit SHA, manifest digest, and archive digest before constructing the
-request. The adapter never fetches or upgrades the plugin.
+Hermes builders. The trusted snapshot is a separate runtime-owned input, never
+copied from the request. The runtime must derive it from verified
+`BUNDLED_BUILD.json` version/commit/archive metadata and the actual installed
+manifest digest. The adapter fails closed unless the request snapshot exactly
+matches that trusted value. It never fetches or upgrades the plugin.
 
 The canonical provider fixture is
-`tests/fixtures/workspace_agent_build_v1.json`.
+`tests/fixtures/workspace_agent_build_v1.json`. Its commit and bundle digests
+are explicitly synthetic contract-test values; they do not claim to identify
+the commit containing this fixture.

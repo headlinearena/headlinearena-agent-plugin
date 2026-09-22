@@ -43,31 +43,36 @@ PLUGIN_SNAPSHOT_FIELDS = {
 DRAFT_FIELDS = {"draft_id", "version", "spec", "output_directory"}
 DIGEST_PATTERN = re.compile(r"sha256:[0-9a-f]{64}")
 COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}")
-FORBIDDEN_KEYS = {
-    "access_token",
-    "accesstoken",
-    "api_key",
-    "apikey",
+FORBIDDEN_KEY_COMPONENTS = {
+    "activate",
+    "activated",
+    "activation",
+    "auth",
+    "authentication",
     "authorization",
-    "client_secret",
-    "clientsecret",
+    "bearer",
     "credential",
     "credentials",
     "deploy",
     "deployed",
     "deployment",
-    "execution_mode",
-    "executionmode",
-    "password",
-    "private_key",
-    "privatekey",
-    "refresh_token",
-    "refreshtoken",
+    "key",
+    "keys",
     "register",
     "registered",
     "registration",
+    "schedule",
+    "scheduled",
+    "scheduling",
     "secret",
+    "secrets",
     "token",
+    "tokens",
+}
+FORBIDDEN_NORMALIZED_KEYS = {"execution_mode", "executionmode"}
+ALLOWED_CONTRACT_KEY_PATHS = {
+    "request.idempotency_key",
+    "request.draft.spec.schedule",
 }
 
 
@@ -104,16 +109,43 @@ def _text(value, path, *, max_length=512):
     return value
 
 
-def _reject_forbidden_keys(value, path="request"):
+def _key_components(key):
+    with_word_boundaries = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", str(key))
+    return tuple(
+        component
+        for component in re.sub(
+            r"[^a-z0-9]+", "_", with_word_boundaries.casefold()
+        ).split("_")
+        if component
+    )
+
+
+def _forbidden_component(component):
+    return component in FORBIDDEN_KEY_COMPONENTS or component.startswith(
+        ("activat", "deploy", "register", "schedul")
+    )
+
+
+def _reject_forbidden_fields(value, path="request"):
     if isinstance(value, dict):
         for key, nested in value.items():
-            normalized = str(key).casefold().replace("-", "_")
-            if normalized in FORBIDDEN_KEYS:
-                raise ContractError(f"{path}.{key} is not allowed in a build envelope")
-            _reject_forbidden_keys(nested, f"{path}.{key}")
+            field_path = f"{path}.{key}"
+            components = _key_components(key)
+            normalized = "_".join(components)
+            if field_path not in ALLOWED_CONTRACT_KEY_PATHS and (
+                normalized in FORBIDDEN_NORMALIZED_KEYS
+                or any(
+                    _forbidden_component(component)
+                    for component in components
+                )
+            ):
+                raise ContractError(
+                    f"{field_path} is not allowed in a build envelope"
+                )
+            _reject_forbidden_fields(nested, field_path)
     elif isinstance(value, list):
         for index, nested in enumerate(value):
-            _reject_forbidden_keys(nested, f"{path}[{index}]")
+            _reject_forbidden_fields(nested, f"{path}[{index}]")
 
 
 def _digest(value, path):
@@ -140,13 +172,13 @@ def _relative_output(value):
     return normalized
 
 
-def _plugin_snapshot(value):
+def _plugin_snapshot(value, path):
     snapshot = _exact_fields(
-        value, "request.plugin_snapshot", PLUGIN_SNAPSHOT_FIELDS
+        value, path, PLUGIN_SNAPSHOT_FIELDS
     )
-    name = _text(snapshot["name"], "request.plugin_snapshot.name")
-    version = _text(snapshot["version"], "request.plugin_snapshot.version")
-    skill = _text(snapshot["skill"], "request.plugin_snapshot.skill")
+    name = _text(snapshot["name"], f"{path}.name")
+    version = _text(snapshot["version"], f"{path}.version")
+    skill = _text(snapshot["skill"], f"{path}.skill")
     if (
         name != PLUGIN_NAME
         or version != PLUGIN_VERSION
@@ -156,11 +188,11 @@ def _plugin_snapshot(value):
             "request.plugin_snapshot does not identify this plugin and skill version"
         )
     commit_sha = _text(
-        snapshot["commit_sha"], "request.plugin_snapshot.commit_sha", max_length=40
+        snapshot["commit_sha"], f"{path}.commit_sha", max_length=40
     )
     if not COMMIT_PATTERN.fullmatch(commit_sha):
         raise ContractError(
-            "request.plugin_snapshot.commit_sha must be 40 lowercase hex characters"
+            f"{path}.commit_sha must be 40 lowercase hex characters"
         )
     return {
         "name": name,
@@ -168,17 +200,17 @@ def _plugin_snapshot(value):
         "commit_sha": commit_sha,
         "skill": skill,
         "manifest_digest": _digest(
-            snapshot["manifest_digest"], "request.plugin_snapshot.manifest_digest"
+            snapshot["manifest_digest"], f"{path}.manifest_digest"
         ),
         "archive_digest": _digest(
-            snapshot["archive_digest"], "request.plugin_snapshot.archive_digest"
+            snapshot["archive_digest"], f"{path}.archive_digest"
         ),
     }
 
 
 def validate_request(raw_request):
     request = _exact_fields(raw_request, "request", REQUEST_FIELDS)
-    _reject_forbidden_keys(request)
+    _reject_forbidden_fields(request)
     if request["contract_version"] != CONTRACT_VERSION:
         raise ContractError(
             f"request.contract_version must be {CONTRACT_VERSION}"
@@ -200,7 +232,9 @@ def validate_request(raw_request):
         ),
         "workspace_ref": _text(request["workspace_ref"], "request.workspace_ref"),
         "task_kind": TASK_KIND,
-        "plugin_snapshot": _plugin_snapshot(request["plugin_snapshot"]),
+        "plugin_snapshot": _plugin_snapshot(
+            request["plugin_snapshot"], "request.plugin_snapshot"
+        ),
         "draft": {
             "draft_id": _text(draft["draft_id"], "request.draft.draft_id"),
             "version": version,
@@ -210,21 +244,34 @@ def validate_request(raw_request):
     }
 
 
+def _trusted_snapshot(value):
+    return _plugin_snapshot(value, "trusted_plugin_snapshot")
+
+
 def _timestamp(produced_at=None):
-    value = produced_at or (
-        dt.datetime.now(dt.timezone.utc)
-        .replace(microsecond=0)
-        .isoformat()
-        .replace("+00:00", "Z")
-    )
-    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z", value):
-        raise ContractError("produced_at must use UTC format YYYY-MM-DDTHH:MM:SSZ")
-    return value
+    if produced_at is None:
+        produced_at = dt.datetime.now(dt.timezone.utc)
+        produced_at = produced_at.replace(microsecond=0).isoformat()
+        produced_at = produced_at.replace("+00:00", "Z")
+    try:
+        return scaffold.validate_utc_timestamp(produced_at, "produced_at")
+    except scaffold.SpecError as exc:
+        raise ContractError(str(exc)) from exc
 
 
-def build_agent_draft(raw_request, workspace_path, produced_at=None):
+def build_agent_draft(
+    raw_request,
+    workspace_path,
+    trusted_plugin_snapshot,
+    produced_at=None,
+):
     """Validate one request and create a draft through the shared scaffolder."""
     request = validate_request(raw_request)
+    trusted_snapshot = _trusted_snapshot(trusted_plugin_snapshot)
+    if request["plugin_snapshot"] != trusted_snapshot:
+        raise ContractError(
+            "request.plugin_snapshot does not match trusted bundle metadata"
+        )
     timestamp = _timestamp(produced_at)
     draft = request["draft"]
     scaffold_result = scaffold.scaffold_data(
@@ -254,22 +301,27 @@ def _reject_json_constant(value):
     raise ContractError(f"request contains non-finite JSON number: {value}")
 
 
-def load_request(request_path):
-    path = Path(request_path)
-    if path.stat().st_size > MAX_REQUEST_BYTES:
-        raise ContractError("request file exceeds the 2 MiB limit")
+def load_json(path_arg, label, max_bytes=MAX_REQUEST_BYTES):
+    path = Path(path_arg)
+    if path.stat().st_size > max_bytes:
+        raise ContractError(f"{label} file exceeds the {max_bytes}-byte limit")
     try:
         return json.loads(
             path.read_text(encoding="utf-8"),
             parse_constant=_reject_json_constant,
         )
     except json.JSONDecodeError as exc:
-        raise ContractError(f"request is not valid JSON: {exc}") from exc
+        raise ContractError(f"{label} is not valid JSON: {exc}") from exc
 
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--request", required=True, help="AgentDraft request JSON")
+    parser.add_argument(
+        "--trusted-snapshot",
+        required=True,
+        help="Trusted snapshot derived from verified immutable bundle metadata",
+    )
     parser.add_argument(
         "--workspace",
         required=True,
@@ -283,7 +335,10 @@ def main(argv=None):
     args = parse_args(argv)
     try:
         result = build_agent_draft(
-            load_request(args.request), args.workspace, args.produced_at
+            load_json(args.request, "request"),
+            args.workspace,
+            load_json(args.trusted_snapshot, "trusted snapshot", max_bytes=4096),
+            args.produced_at,
         )
     except (ContractError, scaffold.SpecError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
