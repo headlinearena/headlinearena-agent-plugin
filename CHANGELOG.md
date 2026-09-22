@@ -17,8 +17,10 @@ builder's `BUILDER_VERSION` — see the versioning rules in `CLAUDE.md`.
   ternary, binary, numeric, and ordered outcomes; requires a reviewed Forecasting for
   Good eligibility attestation; gives binary outcomes an explicit positive label;
   blocks path traversal and symlink escapes; and refuses existing output paths unless
-  replacement is explicitly requested. Forced updates use same-directory temporary
-  files and atomic replacement so existing hardlinks are never written through.
+  replacement is explicitly requested. Writes pin and verify the output directory's
+  file descriptor, then use directory-relative temporary creation, cleanup, and atomic
+  replacement so parent-directory swaps and existing hardlinks are never followed.
+  Platforms without the required secure dirfd primitives fail closed.
 - **Native Hermes parity.** Added the offline `ha_build_agent` tool. Hermes host agents
   conduct the guided/custom conversation, then pass the approved v1 spec to the same
   deterministic scaffolder; the tool makes no backend or network request.

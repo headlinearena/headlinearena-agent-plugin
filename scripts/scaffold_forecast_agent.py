@@ -11,8 +11,9 @@ import json
 import math
 import os
 import re
+import secrets
+import stat
 import sys
-import tempfile
 from pathlib import Path
 
 
@@ -356,8 +357,72 @@ Store the question and contract version, evidence available at forecast time, pr
 """
 
 
-def _atomic_write_files(files):
-    """Write UTF-8 files through same-directory temps and atomic replacement.
+def _supports_secure_dirfd():
+    """Return whether this runtime can perform fail-closed dirfd writes."""
+    return (
+        os.name == "posix"
+        and hasattr(os, "O_DIRECTORY")
+        and hasattr(os, "O_NOFOLLOW")
+        and os.open in os.supports_dir_fd
+        and os.stat in os.supports_dir_fd
+        and os.stat in os.supports_follow_symlinks
+        and os.unlink in os.supports_dir_fd
+        and os.rename in os.supports_dir_fd
+    )
+
+
+def _verify_pinned_output(directory_fd, output):
+    """Ensure the current output path still names the directory pinned by fd."""
+    pinned = os.fstat(directory_fd)
+    try:
+        current = output.lstat()
+    except FileNotFoundError:
+        raise SpecError("output directory changed during scaffold creation")
+    if (
+        not stat.S_ISDIR(current.st_mode)
+        or current.st_dev != pinned.st_dev
+        or current.st_ino != pinned.st_ino
+    ):
+        raise SpecError("output directory changed during scaffold creation")
+
+
+def _open_pinned_output(output):
+    if not _supports_secure_dirfd():
+        raise SpecError(
+            "secure directory-relative writes are unavailable on this platform; "
+            "refusing to scaffold"
+        )
+    try:
+        directory_fd = os.open(
+            str(output), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        )
+    except OSError as exc:
+        raise SpecError(f"could not securely open output directory: {exc}")
+    try:
+        _verify_pinned_output(directory_fd, output)
+    except Exception:
+        os.close(directory_fd)
+        raise
+    return directory_fd
+
+
+def _validate_generated_targets(directory_fd, target_names):
+    """Retain the explicit refusal to replace symlinks or non-files."""
+    for target_name in target_names:
+        try:
+            target = os.stat(
+                target_name, dir_fd=directory_fd, follow_symlinks=False
+            )
+        except FileNotFoundError:
+            continue
+        if stat.S_ISLNK(target.st_mode) or not stat.S_ISREG(target.st_mode):
+            raise SpecError(
+                f"refusing to replace symlink or non-file path: {target_name}"
+            )
+
+
+def _atomic_write_files(directory_fd, files):
+    """Write UTF-8 files through pinned-dirfd temps and atomic replacement.
 
     Replacing the directory entry rather than opening an existing destination
     prevents writes from following a hardlink or a target swapped to a symlink
@@ -365,15 +430,23 @@ def _atomic_write_files(files):
     """
     pending = []
     try:
-        for target, content in files:
-            descriptor, temp_name = tempfile.mkstemp(
-                dir=str(target.parent),
-                prefix=f".{target.name}.",
-                suffix=".tmp",
-                text=True,
-            )
-            temp_path = Path(temp_name)
-            pending.append((temp_path, target))
+        for target_name, content in files:
+            while True:
+                temp_name = f".{target_name}.{secrets.token_hex(12)}.tmp"
+                try:
+                    descriptor = os.open(
+                        temp_name,
+                        os.O_WRONLY
+                        | os.O_CREAT
+                        | os.O_EXCL
+                        | os.O_NOFOLLOW,
+                        0o600,
+                        dir_fd=directory_fd,
+                    )
+                    break
+                except FileExistsError:
+                    continue
+            pending.append((temp_name, target_name))
             try:
                 stream = os.fdopen(
                     descriptor, "w", encoding="utf-8", newline=""
@@ -386,13 +459,25 @@ def _atomic_write_files(files):
                 stream.flush()
                 os.fsync(stream.fileno())
 
-        for temp_path, target in list(pending):
-            os.replace(str(temp_path), str(target))
-            pending.remove((temp_path, target))
-    finally:
-        for temp_path, _target in pending:
+        for temp_name, target_name in list(pending):
             try:
-                temp_path.unlink()
+                os.replace(
+                    temp_name,
+                    target_name,
+                    src_dir_fd=directory_fd,
+                    dst_dir_fd=directory_fd,
+                )
+            except (TypeError, NotImplementedError) as exc:
+                raise SpecError(
+                    "secure directory-relative replacement is unavailable; "
+                    "refusing to scaffold"
+                ) from exc
+            pending.remove((temp_name, target_name))
+        os.fsync(directory_fd)
+    finally:
+        for temp_name, _target_name in pending:
+            try:
+                os.unlink(temp_name, dir_fd=directory_fd)
             except FileNotFoundError:
                 pass
 
@@ -406,8 +491,14 @@ def scaffold_data(raw_spec, workspace_path, output_arg=None, force=False, create
         raise SpecError("--workspace must be an existing directory")
     relative_output = output_arg or f"forecast-agents/{_slug(spec['name'])}"
     output = _inside_workspace(workspace, relative_output)
-    spec_file = output / "forecast-agent.json"
-    instructions_file = output / "AGENT.md"
+    if not _supports_secure_dirfd():
+        raise SpecError(
+            "secure directory-relative writes are unavailable on this platform; "
+            "refusing to scaffold"
+        )
+    target_names = ("forecast-agent.json", "AGENT.md")
+    spec_file = output / target_names[0]
+    instructions_file = output / target_names[1]
 
     if output.exists() and not force:
         raise SpecError(
@@ -416,11 +507,6 @@ def scaffold_data(raw_spec, workspace_path, output_arg=None, force=False, create
         )
     if output.exists() and not output.is_dir():
         raise SpecError(f"output exists and is not a directory: {output}")
-    if force:
-        for generated in (spec_file, instructions_file):
-            if generated.is_symlink() or (generated.exists() and not generated.is_file()):
-                raise SpecError(f"refusing to replace symlink or non-file path: {generated}")
-
     timestamp = created_at or (
         dt.datetime.now(dt.timezone.utc)
         .replace(microsecond=0)
@@ -451,9 +537,17 @@ def scaffold_data(raw_spec, workspace_path, output_arg=None, force=False, create
             raise SpecError(
                 f"output appeared after validation: {output}; refusing to overwrite"
             )
-    _atomic_write_files(
-        ((spec_file, spec_text), (instructions_file, instructions_text))
-    )
+    directory_fd = _open_pinned_output(output)
+    try:
+        if force:
+            _validate_generated_targets(directory_fd, target_names)
+        _atomic_write_files(
+            directory_fd,
+            ((target_names[0], spec_text), (target_names[1], instructions_text)),
+        )
+        _verify_pinned_output(directory_fd, output)
+    finally:
+        os.close(directory_fd)
     return {
         "status": "created",
         "output_directory": str(output),

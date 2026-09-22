@@ -94,7 +94,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/scaffold_forecast_agent.py" \
   --output forecast-agents/gold-macro-monitor
 ```
 
-`--output` must be a relative path inside `--workspace`; absolute paths, `..` traversal, symlink escapes, and the workspace root itself are rejected. The destination must not already exist. If the user explicitly approved replacing prior generated files, add `--force`; this overwrites only `forecast-agent.json` and `AGENT.md` and preserves unrelated files.
+`--output` must be a relative path inside `--workspace`; absolute paths, `..` traversal, symlink escapes, and the workspace root itself are rejected. The destination must not already exist. If the user explicitly approved replacing prior generated files, add `--force`; this overwrites only `forecast-agent.json` and `AGENT.md` and preserves unrelated files. Writes use a pinned, verified directory file descriptor; runtimes without the required secure dirfd primitives fail closed rather than falling back to path-based writes.
 
 The command prints a JSON summary with the output directory and generated paths. It performs no network calls.
 
