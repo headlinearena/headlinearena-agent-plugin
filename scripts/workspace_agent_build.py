@@ -43,52 +43,62 @@ PLUGIN_SNAPSHOT_FIELDS = {
 DRAFT_FIELDS = {"draft_id", "version", "spec", "output_directory"}
 DIGEST_PATTERN = re.compile(r"sha256:[0-9a-f]{64}")
 COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}")
-FORBIDDEN_KEY_COMPONENTS = {
-    "activate",
-    "activated",
-    "activation",
+FORBIDDEN_STANDALONE_COMPONENTS = {
     "auth",
     "authentication",
     "authorization",
     "bearer",
     "credential",
     "credentials",
-    "deploy",
-    "deployed",
-    "deployment",
-    "key",
-    "keys",
-    "register",
-    "registered",
-    "registration",
-    "schedule",
-    "scheduled",
-    "scheduling",
+    "password",
     "secret",
     "secrets",
-    "token",
-    "tokens",
 }
-FORBIDDEN_NORMALIZED_KEYS = {"execution_mode", "executionmode"}
-FORBIDDEN_ALNUM_FRAGMENTS = {
+FORBIDDEN_CREDENTIAL_SUFFIXES = {
     "accesstoken",
     "apikey",
     "apisecret",
-    "authentication",
-    "authorization",
     "authheader",
     "authtoken",
-    "bearer",
+    "bearertoken",
     "clientsecret",
-    "credential",
     "encryptionkey",
     "idtoken",
-    "password",
     "privatekey",
     "refreshtoken",
-    "secret",
     "secretkey",
     "signingkey",
+}
+FORBIDDEN_CREDENTIAL_PREFIXES = {
+    "authorization",
+    "bearer",
+    "credential",
+    "password",
+    "secret",
+}
+FORBIDDEN_LIFECYCLE_KEYS = {
+    "activate",
+    "activated",
+    "activation",
+    "activationstatus",
+    "deploy",
+    "deployed",
+    "deployment",
+    "deploymentid",
+    "deploymentstatus",
+    "executionmode",
+    "register",
+    "registered",
+    "registration",
+    "registrationid",
+    "registrationstatus",
+    "reschedulepolicy",
+    "schedule",
+    "scheduled",
+    "schedulepolicy",
+    "scheduling",
+    "schedulingpolicy",
+    "unscheduled",
 }
 ALLOWED_CONTRACT_KEY_PATHS = {
     "request.idempotency_key",
@@ -140,19 +150,19 @@ def _key_components(key):
     )
 
 
-def _forbidden_component(component):
-    return component in FORBIDDEN_KEY_COMPONENTS or any(
-        stem in component for stem in ("activat", "deploy", "registr", "schedul")
-    )
-
-
 def _forbidden_key(components):
-    normalized = "_".join(components)
     alphanumeric = "".join(components)
     return (
-        normalized in FORBIDDEN_NORMALIZED_KEYS
-        or any(_forbidden_component(component) for component in components)
-        or any(fragment in alphanumeric for fragment in FORBIDDEN_ALNUM_FRAGMENTS)
+        any(component in FORBIDDEN_STANDALONE_COMPONENTS for component in components)
+        or any(
+            alphanumeric.endswith(suffix)
+            for suffix in FORBIDDEN_CREDENTIAL_SUFFIXES
+        )
+        or any(
+            alphanumeric.startswith(prefix)
+            for prefix in FORBIDDEN_CREDENTIAL_PREFIXES
+        )
+        or alphanumeric in FORBIDDEN_LIFECYCLE_KEYS
     )
 
 

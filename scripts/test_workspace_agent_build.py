@@ -133,11 +133,27 @@ class WorkspaceAgentBuildContractTests(unittest.TestCase):
         request = copy.deepcopy(self.fixture["request"])
         request["draft"]["spec"]["operation"]["max_credits_per_run"] = 5
         request["draft"]["spec"]["extensions"] = {
-            "monkeypox_signal": "public-health indicator",
-            "tokenization_method": "document preprocessing",
+            "target_key": "GC",
+            "canonical_target_key": "GC",
+            "dataset_key": "macro-public-data",
+            "token_budget": 1000,
+            "max_output_tokens": 500,
+            "context_window_tokens": 16000,
+            "model_registry": "approved-models",
+            "registry_source": "workspace-catalog",
+            "activation_function": "gelu",
         }
         result = self.build(request)
         self.assertEqual(result["draft"]["status"], "draft")
+        generated = json.loads(
+            (
+                self.workspace
+                / "forecast-agents/gold-macro-monitor/forecast-agent.json"
+            ).read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            generated["extensions"], request["draft"]["spec"]["extensions"]
+        )
 
     def test_fails_closed_when_request_snapshot_is_not_the_trusted_snapshot(self):
         request = copy.deepcopy(self.fixture["request"])
