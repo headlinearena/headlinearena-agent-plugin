@@ -1,6 +1,6 @@
-"""Hermes tool-kind plugin wrapping the HeadlineArena CLI (scripts/ha.py).
+"""Hermes tool-kind plugin for HeadlineArena operations and local scaffolding.
 
-Every tool here is a thin adapter: build the same argparse.Namespace-shaped
+API tools here are thin adapters: build the same argparse.Namespace-shaped
 object ha.py's CLI would build for the equivalent subcommand, run the matching
 cmd_* function with stdout captured, and return the JSON blob it printed.
 This reuses ha.py's credential persistence (~/.headlinearena/credentials.json,
@@ -15,6 +15,9 @@ Multiple agents can be registered against the same origin; ha_* tools operate
 on the origin's default agent (see ha_agents / ha_use) unless the HA_AGENT_ID
 env var is set — that's the only override available here, since (unlike the
 CLI) these adapters never go through ha.py's argparse --agent-id flag.
+
+ha_build_agent is the exception: it calls the offline validated scaffolder
+directly and never enters the API or plugin-update network path.
 """
 from __future__ import annotations
 
@@ -27,6 +30,7 @@ from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / "scripts"))
 import ha  # noqa: E402
+import scaffold_forecast_agent as agent_scaffold  # noqa: E402
 
 from tools.registry import tool_result, tool_error  # provided by the Hermes host
 
@@ -112,6 +116,77 @@ HA_UPDATE_CHECK_SCHEMA = {
 
 def handle_ha_update_check(args: dict, **kw) -> str:
     return _run(ha.cmd_update_check)
+
+
+# ============================================================================
+# offline forecast-agent scaffold
+# ============================================================================
+
+HA_BUILD_AGENT_SCHEMA = {
+    "name": "ha_build_agent",
+    "description": (
+        "Create an auditable local forecasting-agent scaffold from an APPROVED v1 spec. "
+        "The host agent must first ask whether the user wants HeadlineArena guided setup "
+        "or to customize it themselves, review objective/target+horizon/outcome/data/"
+        "schedule/evaluation, and reject chance-only entertainment before setting the "
+        "Forecasting for Good eligibility attestation true. This deterministic tool does "
+        "not conduct that conversation or infer social value; it only validates the approved "
+        "spec and writes forecast-agent.json plus AGENT.md. It makes no network/backend call "
+        "and does not register, deploy, schedule, fund, or run the agent. Existing output is "
+        "refused unless force=true after explicit user approval."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "spec": {
+                "type": "object",
+                "description": (
+                    "Approved schema_version=1 agent spec. Required fields: name, setup_mode "
+                    "(guided|custom), objective, forecasting_for_good, targets, horizon, "
+                    "outcome, data, schedule, evaluation. Binary outcomes require labels and "
+                    "positive_label; numeric outcomes require unit and encoding."
+                ),
+            },
+            "workspace": {
+                "type": "string",
+                "description": "Existing workspace root; output is confined beneath it",
+                "default": ".",
+            },
+            "output": {
+                "type": "string",
+                "description": (
+                    "Relative output directory; defaults to forecast-agents/<agent-slug>. "
+                    "Absolute paths and '..' traversal are rejected."
+                ),
+            },
+            "force": {
+                "type": "boolean",
+                "description": (
+                    "Replace only forecast-agent.json and AGENT.md in an existing directory. "
+                    "Set true only after explicit user approval."
+                ),
+                "default": False,
+            },
+        },
+        "required": ["spec"],
+    },
+}
+
+
+def handle_ha_build_agent(args: dict, **kw) -> str:
+    """Run the offline scaffolder without the API/update-check path in _run()."""
+    try:
+        result = agent_scaffold.scaffold_data(
+            args["spec"],
+            args.get("workspace", "."),
+            args.get("output"),
+            args.get("force", False),
+        )
+    except (OSError, agent_scaffold.SpecError) as exc:
+        return tool_error(str(exc))
+    except Exception as exc:  # never let a tool crash the Hermes host
+        return tool_error(f"{type(exc).__name__}: {exc}")
+    return tool_result(result)
 
 
 # ============================================================================
@@ -776,6 +851,7 @@ def handle_ha_scorecard(args: dict, **kw) -> str:
 
 _TOOLS = (
     ("ha_update_check", HA_UPDATE_CHECK_SCHEMA, handle_ha_update_check, "🔄"),
+    ("ha_build_agent", HA_BUILD_AGENT_SCHEMA, handle_ha_build_agent, "🛠️"),
     ("ha_agents", HA_AGENTS_SCHEMA, handle_ha_agents, "🗂️"),
     ("ha_use", HA_USE_SCHEMA, handle_ha_use, "🔀"),
     ("ha_register", HA_REGISTER_SCHEMA, handle_ha_register, "📝"),

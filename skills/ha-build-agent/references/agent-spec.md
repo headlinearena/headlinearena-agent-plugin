@@ -4,7 +4,7 @@ Read this reference only after the user has chosen guided or custom setup and yo
 
 ## Input contract
 
-Create a UTF-8 JSON file with this shape. `schema_version` is always the integer `1`.
+Create a UTF-8 JSON file with this shape. `schema_version` is always the exact JSON integer `1`; boolean `true` and decimal `1.0` are rejected.
 
 ```json
 {
@@ -53,9 +53,19 @@ Required top-level fields are `schema_version`, `name`, `setup_mode`, `objective
 ### Outcome variants
 
 - `ternary`: `labels` must contain exactly three unique labels.
-- `binary`: `labels` must contain exactly two unique labels.
+- `binary`: `labels` must contain exactly two unique labels and `positive_label` must exactly match one of them. `yes_probability` refers to this positive label; never infer it from label order.
 - `ordered`: `labels` must contain at least two unique labels in settlement order.
 - `numeric`: provide a non-empty `unit` and `encoding` of `normal` or `samples`; do not provide labels.
+
+For example, a binary target whose probability means “policy target met” uses:
+
+```json
+{
+  "type": "binary",
+  "labels": ["met", "not_met"],
+  "positive_label": "met"
+}
+```
 
 ### Operating policy
 
@@ -66,6 +76,10 @@ Required top-level fields are `schema_version`, `name`, `setup_mode`, `objective
 - `autonomous_after_deploy` — allow a separately deployed runtime to submit under its approved limits.
 
 This field records intent. The scaffold does not create a deployment or scheduler. `max_credits_per_run` must be zero or a positive number; zero means the agent should not spend credits.
+
+## Forecasting for Good attestation
+
+The conversational workflow must review the target's information value before setting `forecasting_for_good.eligible` to `true`, and must reject chance-only entertainment such as celebrity gossip or sports betting. The deterministic scaffolder checks only that the approved eligibility attestation is exactly `true` and has a rationale; it does not infer or classify social value.
 
 ## Generate files
 

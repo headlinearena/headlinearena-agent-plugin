@@ -14,13 +14,22 @@ builder's `BUILDER_VERSION` — see the versioning rules in `CLAUDE.md`.
 - **Auditable offline scaffold.** Added the stdlib-only
   `scripts/scaffold_forecast_agent.py`, which validates a fixed v1 schema and creates
   `forecast-agent.json` plus `AGENT.md` without making network calls. It supports
-  ternary, binary, numeric, and ordered outcomes; enforces the Forecasting for Good
-  eligibility gate; blocks path traversal and symlink escapes; and refuses existing
-  output paths unless replacement is explicitly requested.
+  ternary, binary, numeric, and ordered outcomes; requires a reviewed Forecasting for
+  Good eligibility attestation; gives binary outcomes an explicit positive label;
+  blocks path traversal and symlink escapes; and refuses existing output paths unless
+  replacement is explicitly requested. Forced updates use same-directory temporary
+  files and atomic replacement so existing hardlinks are never written through.
+- **Native Hermes parity.** Added the offline `ha_build_agent` tool. Hermes host agents
+  conduct the guided/custom conversation, then pass the approved v1 spec to the same
+  deterministic scaffolder; the tool makes no backend or network request.
 - Building files remains separate from registration, deployment, scheduling, credit
   use, and forecast submission. The workflow hands those approved actions to the
   existing `ha-register`, `ha-wallet`, and `ha-predict` capabilities instead of
   inventing backend endpoints.
+- **Rollout order:** publish plugin v1.35.0, update the Canvas Workspace default
+  preinstall to that version, then deploy Canvas. The “already available” hosted UX is
+  true only after that Workspace deployment; external hosts continue to install through
+  their plugin manager.
 
 ## 1.34.0
 

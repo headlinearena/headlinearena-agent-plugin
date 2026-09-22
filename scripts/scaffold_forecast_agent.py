@@ -9,8 +9,10 @@ import argparse
 import datetime as dt
 import json
 import math
+import os
 import re
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -106,11 +108,24 @@ def _validate_outcome(value):
         )
         return {"type": outcome_type, "labels": labels}
     if outcome_type == "binary":
-        _known_fields(outcome, "outcome", {"type", "labels"})
+        _known_fields(
+            outcome, "outcome", {"type", "labels", "positive_label"}
+        )
         labels = _string_list(
             outcome.get("labels"), "outcome.labels", exact_items=2
         )
-        return {"type": outcome_type, "labels": labels}
+        positive_label = _text(
+            outcome.get("positive_label"), "outcome.positive_label", max_length=300
+        )
+        if positive_label not in labels:
+            raise SpecError(
+                "outcome.positive_label must exactly match one outcome.labels value"
+            )
+        return {
+            "type": outcome_type,
+            "labels": labels,
+            "positive_label": positive_label,
+        }
     if outcome_type == "ordered":
         _known_fields(outcome, "outcome", {"type", "labels"})
         labels = _string_list(
@@ -137,7 +152,10 @@ def validate_spec(raw):
         )
     if missing:
         raise SpecError(f"missing required field(s): {', '.join(missing)}")
-    if spec["schema_version"] != SCHEMA_VERSION:
+    if (
+        type(spec["schema_version"]) is not int
+        or spec["schema_version"] != SCHEMA_VERSION
+    ):
         raise SpecError(f"schema_version must be the integer {SCHEMA_VERSION}")
 
     name = _text(spec["name"], "name", max_length=80)
@@ -276,6 +294,11 @@ def render_instructions(spec):
     outcome = spec["outcome"]
     if outcome["type"] == "numeric":
         outcome_text = f"numeric ({outcome['unit']}; {outcome['encoding']} encoding)"
+    elif outcome["type"] == "binary":
+        outcome_text = (
+            f"binary: {', '.join(outcome['labels'])} "
+            f"(positive: {outcome['positive_label']})"
+        )
     else:
         outcome_text = f"{outcome['type']}: {', '.join(outcome['labels'])}"
     triggers = _bullets(spec["schedule"]["triggers"])
@@ -333,18 +356,50 @@ Store the question and contract version, evidence available at forecast time, pr
 """
 
 
-def scaffold(spec_path, workspace_path, output_arg, force=False, created_at=None):
-    spec_path = Path(spec_path)
-    if spec_path.stat().st_size > MAX_SPEC_BYTES:
-        raise SpecError("spec file exceeds the 1 MiB limit")
+def _atomic_write_files(files):
+    """Write UTF-8 files through same-directory temps and atomic replacement.
+
+    Replacing the directory entry rather than opening an existing destination
+    prevents writes from following a hardlink or a target swapped to a symlink
+    after validation. Every still-pending temporary is removed on failure.
+    """
+    pending = []
     try:
-        raw = json.loads(
-            spec_path.read_text(encoding="utf-8"),
-            parse_constant=_reject_json_constant,
-        )
-    except json.JSONDecodeError as exc:
-        raise SpecError(f"spec is not valid JSON: {exc}")
-    spec = validate_spec(raw)
+        for target, content in files:
+            descriptor, temp_name = tempfile.mkstemp(
+                dir=str(target.parent),
+                prefix=f".{target.name}.",
+                suffix=".tmp",
+                text=True,
+            )
+            temp_path = Path(temp_name)
+            pending.append((temp_path, target))
+            try:
+                stream = os.fdopen(
+                    descriptor, "w", encoding="utf-8", newline=""
+                )
+            except Exception:
+                os.close(descriptor)
+                raise
+            with stream:
+                stream.write(content)
+                stream.flush()
+                os.fsync(stream.fileno())
+
+        for temp_path, target in list(pending):
+            os.replace(str(temp_path), str(target))
+            pending.remove((temp_path, target))
+    finally:
+        for temp_path, _target in pending:
+            try:
+                temp_path.unlink()
+            except FileNotFoundError:
+                pass
+
+
+def scaffold_data(raw_spec, workspace_path, output_arg=None, force=False, created_at=None):
+    """Validate an in-memory approved spec and create its local scaffold."""
+    spec = validate_spec(raw_spec)
 
     workspace = Path(workspace_path)
     if not workspace.is_dir():
@@ -386,15 +441,39 @@ def scaffold(spec_path, workspace_path, output_arg, force=False, created_at=None
     spec_text = json.dumps(rendered_spec, indent=2, ensure_ascii=False) + "\n"
     instructions_text = render_instructions(spec)
 
-    output.mkdir(parents=True, exist_ok=True)
-    spec_file.write_text(spec_text, encoding="utf-8")
-    instructions_file.write_text(instructions_text, encoding="utf-8")
+    if force:
+        output.mkdir(parents=True, exist_ok=True)
+    else:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            output.mkdir()
+        except FileExistsError:
+            raise SpecError(
+                f"output appeared after validation: {output}; refusing to overwrite"
+            )
+    _atomic_write_files(
+        ((spec_file, spec_text), (instructions_file, instructions_text))
+    )
     return {
         "status": "created",
         "output_directory": str(output),
         "files": [str(spec_file), str(instructions_file)],
         "network_calls": 0,
     }
+
+
+def scaffold(spec_path, workspace_path, output_arg, force=False, created_at=None):
+    spec_path = Path(spec_path)
+    if spec_path.stat().st_size > MAX_SPEC_BYTES:
+        raise SpecError("spec file exceeds the 1 MiB limit")
+    try:
+        raw = json.loads(
+            spec_path.read_text(encoding="utf-8"),
+            parse_constant=_reject_json_constant,
+        )
+    except json.JSONDecodeError as exc:
+        raise SpecError(f"spec is not valid JSON: {exc}")
+    return scaffold_data(raw, workspace_path, output_arg, force, created_at)
 
 
 def parse_args(argv=None):

@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(__file__))
 import scaffold_forecast_agent as scaffold
@@ -58,7 +59,11 @@ class ValidateSpecTests(unittest.TestCase):
     def test_supports_all_outcome_types(self):
         outcomes = [
             {"type": "ternary", "labels": ["up", "flat", "down"]},
-            {"type": "binary", "labels": ["yes", "no"]},
+            {
+                "type": "binary",
+                "labels": ["yes", "no"],
+                "positive_label": "yes",
+            },
             {"type": "numeric", "unit": "percent", "encoding": "samples"},
             {"type": "ordered", "labels": ["low", "medium", "high"]},
         ]
@@ -67,12 +72,40 @@ class ValidateSpecTests(unittest.TestCase):
                 self.assertEqual(scaffold.validate_spec(valid_spec(outcome))["outcome"], outcome)
 
     def test_rejects_wrong_schema_version(self):
-        spec = valid_spec()
-        spec["schema_version"] = 2
-        with self.assertRaisesRegex(scaffold.SpecError, "schema_version"):
-            scaffold.validate_spec(spec)
+        for invalid in (2, True, 1.0):
+            with self.subTest(schema_version=invalid):
+                spec = valid_spec()
+                spec["schema_version"] = invalid
+                with self.assertRaisesRegex(scaffold.SpecError, "schema_version"):
+                    scaffold.validate_spec(spec)
 
-    def test_rejects_non_public_value_target(self):
+    def test_binary_requires_matching_positive_label(self):
+        for positive_label in (None, "YES", "maybe"):
+            with self.subTest(positive_label=positive_label):
+                outcome = {
+                    "type": "binary",
+                    "labels": ["yes", "no"],
+                    "positive_label": positive_label,
+                }
+                with self.assertRaisesRegex(scaffold.SpecError, "positive_label"):
+                    scaffold.validate_spec(valid_spec(outcome))
+
+    def test_binary_instructions_render_positive_label(self):
+        spec = scaffold.validate_spec(
+            valid_spec(
+                {
+                    "type": "binary",
+                    "labels": ["met", "not_met"],
+                    "positive_label": "met",
+                }
+            )
+        )
+        self.assertIn(
+            "Outcome: binary: met, not_met (positive: met)",
+            scaffold.render_instructions(spec),
+        )
+
+    def test_rejects_false_reviewed_eligibility_attestation(self):
         spec = valid_spec()
         spec["forecasting_for_good"]["eligible"] = False
         with self.assertRaisesRegex(scaffold.SpecError, "eligible must be true"):
@@ -146,6 +179,57 @@ class ScaffoldTests(unittest.TestCase):
         )
         self.assertEqual(sentinel.read_text(encoding="utf-8"), "keep")
         self.assertTrue((output / "forecast-agent.json").is_file())
+
+    @unittest.skipUnless(hasattr(os, "link"), "hardlinks unavailable")
+    def test_force_replaces_hardlink_without_mutating_other_link(self):
+        output = self.workspace / "existing"
+        output.mkdir()
+        outside = Path(self.temp.name) / "outside.json"
+        outside.write_text("do not mutate", encoding="utf-8")
+        os.link(outside, output / "forecast-agent.json")
+        (output / "AGENT.md").write_text("old instructions", encoding="utf-8")
+
+        scaffold.scaffold(
+            self.spec_file,
+            self.workspace,
+            "existing",
+            force=True,
+            created_at="2026-09-22T12:00:00Z",
+        )
+
+        self.assertEqual(outside.read_text(encoding="utf-8"), "do not mutate")
+        generated = json.loads(
+            (output / "forecast-agent.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(generated["schema_version"], 1)
+        self.assertNotEqual(
+            outside.stat().st_ino, (output / "forecast-agent.json").stat().st_ino
+        )
+
+    def test_replace_failure_cleans_pending_temp_files(self):
+        real_replace = os.replace
+        replace_count = 0
+
+        def fail_second_replace(source, destination):
+            nonlocal replace_count
+            replace_count += 1
+            if replace_count == 2:
+                raise OSError("simulated second replace failure")
+            return real_replace(source, destination)
+
+        with mock.patch.object(
+            scaffold.os, "replace", side_effect=fail_second_replace
+        ):
+            with self.assertRaisesRegex(OSError, "second replace failure"):
+                scaffold.scaffold(
+                    self.spec_file,
+                    self.workspace,
+                    "partial",
+                    created_at="2026-09-22T12:00:00Z",
+                )
+
+        output = self.workspace / "partial"
+        self.assertEqual(list(output.glob(".*.tmp")), [])
 
     def test_rejects_path_traversal_and_absolute_output(self):
         for output in ("../escape", str(Path(self.temp.name) / "absolute")):

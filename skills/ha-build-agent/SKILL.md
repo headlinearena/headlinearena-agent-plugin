@@ -7,7 +7,7 @@ metadata:
 
 # ha-build-agent — Build a Forecasting Agent
 
-Help the user turn a forecasting objective into an explicit, reviewable agent specification and local instruction files. In the hosted HeadlineArena Workspace this plugin is already available; do not send the user through plugin installation.
+Help the user turn a forecasting objective into an explicit, reviewable agent specification and local instruction files. In hosted HeadlineArena Workspace deployments that bundle plugin v1.35.0 or later, this plugin is already available; when this skill is active, do not send the user through plugin installation.
 
 This skill designs and scaffolds an agent. It does not silently register the agent, deploy a runtime, create a scheduler, spend credits, or submit forecasts. Those are separate, user-approved actions using the platform capabilities that actually exist.
 
@@ -25,7 +25,7 @@ Gather the following decisions conversationally. Ask a small related group at a 
 
 1. **Objective** — what decisions the forecasts should inform, who benefits, and why the target satisfies Forecasting for Good.
 2. **Forecast target and horizon** — the event, market, indicator, or question; forecast deadline and resolution horizon.
-3. **Outcome space** — `ternary`, `binary`, `numeric`, or `ordered`, including labels or numeric unit/encoding.
+3. **Outcome space** — `ternary`, `binary`, `numeric`, or `ordered`, including labels or numeric unit/encoding. A binary outcome must name the positive label used by `yes_probability`.
 4. **Data policy** — allowed sources, excluded sources, freshness needs, and whether additional research is permitted.
 5. **Schedule and triggers** — run cadence plus event-driven triggers. Record the intent only; never claim that a scheduler was created.
 6. **Evaluation** — primary metric, review cadence, and the minimum resolved sample before drawing calibration conclusions.
@@ -48,6 +48,8 @@ Do not weaken these invariants in either mode:
 - The target must pass the Forecasting for Good test: its forecast should have information value for people's decisions or public welfare. Do not scaffold agents for celebrity gossip, sports betting, or other chance-only entertainment.
 - Probabilities must be explicit and calibrated; evidence and assumptions must remain distinguishable from conclusions.
 - Live challenge definitions and settlement contracts are authoritative. Do not invent assets, outcome labels, deadlines, APIs, or scheduler behavior.
+
+Before setting `forecasting_for_good.eligible` to `true`, make and show the semantic judgment conversationally. Reject chance-only entertainment rather than attesting it as eligible. The deterministic scaffolder only validates that the user-reviewed attestation and rationale are present; it does not classify the target's social value.
 
 ## Review before writing
 
