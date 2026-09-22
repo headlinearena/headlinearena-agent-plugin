@@ -7,6 +7,7 @@ deploy, schedule, fund, or run an agent, and it never calls HeadlineArena APIs.
 
 import argparse
 import datetime as dt
+import hashlib
 import json
 import math
 import os
@@ -285,6 +286,27 @@ def _reject_json_constant(value):
     raise SpecError(f"spec contains non-finite JSON number: {value}")
 
 
+def canonical_spec_digest(spec):
+    """Return the stable digest of a validated, normalized v1 specification."""
+    canonical = json.dumps(
+        spec,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return f"sha256:{hashlib.sha256(canonical).hexdigest()}"
+
+
+def _file_manifest_entry(relative_path, media_type, content):
+    encoded = content.encode("utf-8")
+    return {
+        "path": relative_path,
+        "media_type": media_type,
+        "digest": f"sha256:{hashlib.sha256(encoded).hexdigest()}",
+        "size_bytes": len(encoded),
+    }
+
+
 def render_instructions(spec):
     outcome = spec["outcome"]
     if outcome["type"] == "numeric":
@@ -538,6 +560,19 @@ def scaffold_data(raw_spec, workspace_path, output_arg=None, created_at=None):
     }
     spec_text = json.dumps(rendered_spec, indent=2, ensure_ascii=False) + "\n"
     instructions_text = render_instructions(spec)
+    relative_output = "/".join(output_parts)
+    generated_files = [
+        _file_manifest_entry(
+            f"{relative_output}/{target_names[0]}",
+            "application/json",
+            spec_text,
+        ),
+        _file_manifest_entry(
+            f"{relative_output}/{target_names[1]}",
+            "text/markdown",
+            instructions_text,
+        ),
+    ]
 
     workspace_fd = _open_pinned_workspace(workspace)
     open_fds = [workspace_fd]
@@ -604,6 +639,10 @@ def scaffold_data(raw_spec, workspace_path, output_arg=None, created_at=None):
         "output_directory": str(output),
         "files": [str(spec_file), str(instructions_file)],
         "network_calls": 0,
+        "spec_digest": canonical_spec_digest(spec),
+        "relative_output_directory": relative_output,
+        "generated_files": generated_files,
+        "created_at": timestamp,
     }
 
 

@@ -55,6 +55,13 @@ directly invokable functions rather than reading markdown instructions. It wraps
 `~/.headlinearena/credentials.json` by one host are reused by any other. The
 offline `ha_build_agent` tool calls the shared scaffold validator directly.
 
+Hosted Workspace runtimes use the additive `workspace-conversation-v1`
+AgentDraft build adapter in `scripts/workspace_agent_build.py`. It delegates
+writes to the same secure offline scaffolder and returns canonical spec and
+generated-file digests with Workspace-relative paths. See
+`skills/ha-build-agent/references/workspace-build-contract.md` and the provider
+fixture at `tests/fixtures/workspace_agent_build_v1.json`.
+
 Hermes exposes `ha_build_agent` as the same deterministic, offline scaffolder, but a
 native tool cannot conduct the guided/custom multi-turn interview by itself. The Hermes
 host agent must collect and review the specification with the user first, then call the

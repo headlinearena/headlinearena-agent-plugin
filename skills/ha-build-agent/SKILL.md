@@ -57,6 +57,11 @@ Present a compact draft containing all collected fields, assumptions, unresolved
 
 For the canonical schema and scaffold command, read [references/agent-spec.md](references/agent-spec.md). Use the bundled deterministic scaffolder rather than hand-authoring the final files when shell execution is available.
 
+Hosted Workspace runtime adapters must use the versioned offline envelope in
+[references/workspace-build-contract.md](references/workspace-build-contract.md).
+The adapter receives the trusted tenant Workspace root separately; never treat
+the envelope's opaque `workspace_ref` as a filesystem path.
+
 The generated files are:
 
 - `forecast-agent.json` — versioned, machine-readable configuration and audit metadata.
