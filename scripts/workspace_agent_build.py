@@ -55,6 +55,8 @@ FORBIDDEN_STANDALONE_COMPONENTS = {
     "secrets",
 }
 FORBIDDEN_CREDENTIAL_SUFFIXES = {
+    "accesskey",
+    "accesskeyid",
     "accesstoken",
     "apikey",
     "apisecret",
@@ -80,26 +82,41 @@ FORBIDDEN_LIFECYCLE_KEYS = {
     "activate",
     "activated",
     "activation",
+    "activationstate",
     "activationstatus",
+    "activateagent",
     "deploy",
     "deployed",
+    "deployedat",
+    "deployagent",
     "deployment",
     "deploymentid",
+    "deploymentstate",
     "deploymentstatus",
     "executionmode",
     "register",
     "registered",
+    "registeredat",
+    "registeragent",
     "registration",
     "registrationid",
+    "registrationstate",
     "registrationstatus",
     "reschedulepolicy",
     "schedule",
     "scheduled",
+    "scheduledat",
     "schedulepolicy",
+    "schedulestate",
+    "schedulestatus",
     "scheduling",
     "schedulingpolicy",
     "unscheduled",
 }
+LIFECYCLE_NOUNS = {"activation", "deployment", "registration", "schedule"}
+LIFECYCLE_STATUS_FIELDS = {"id", "state", "status"}
+LIFECYCLE_PAST_TENSE = {"activated", "deployed", "registered", "scheduled"}
+LIFECYCLE_ACTION_VERBS = {"activate", "deploy", "register"}
 ALLOWED_CONTRACT_KEY_PATHS = {
     "request.idempotency_key",
     "request.draft.spec.schedule",
@@ -154,6 +171,7 @@ def _forbidden_key(components):
     alphanumeric = "".join(components)
     return (
         any(component in FORBIDDEN_STANDALONE_COMPONENTS for component in components)
+        or (bool(components) and components[-1] == "token")
         or any(
             alphanumeric.endswith(suffix)
             for suffix in FORBIDDEN_CREDENTIAL_SUFFIXES
@@ -163,6 +181,22 @@ def _forbidden_key(components):
             for prefix in FORBIDDEN_CREDENTIAL_PREFIXES
         )
         or alphanumeric in FORBIDDEN_LIFECYCLE_KEYS
+        or any(
+            component in LIFECYCLE_NOUNS
+            and index + 1 < len(components)
+            and components[index + 1] in LIFECYCLE_STATUS_FIELDS
+            for index, component in enumerate(components)
+        )
+        or any(
+            component in LIFECYCLE_PAST_TENSE
+            and index + 1 < len(components)
+            and components[index + 1] == "at"
+            for index, component in enumerate(components)
+        )
+        or any(
+            component in LIFECYCLE_ACTION_VERBS and index + 1 < len(components)
+            for index, component in enumerate(components)
+        )
     )
 
 
