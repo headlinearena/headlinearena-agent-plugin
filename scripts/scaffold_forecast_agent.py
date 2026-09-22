@@ -11,7 +11,6 @@ import json
 import math
 import os
 import re
-import secrets
 import stat
 import sys
 from pathlib import Path
@@ -264,19 +263,14 @@ def _slug(name):
     return value[:64].rstrip("-")
 
 
-def _inside_workspace(workspace, relative_output):
+def _relative_output_parts(relative_output):
     output_arg = Path(relative_output)
     if output_arg.is_absolute() or ".." in output_arg.parts:
         raise SpecError("--output must be a relative path without '..'")
-    workspace = workspace.resolve()
-    output = (workspace / output_arg).resolve()
-    if output == workspace:
+    parts = tuple(part for part in output_arg.parts if part != ".")
+    if not parts:
         raise SpecError("--output must not be the workspace root")
-    try:
-        output.relative_to(workspace)
-    except ValueError:
-        raise SpecError("--output resolves outside --workspace")
-    return output
+    return parts
 
 
 def _one_line(value):
@@ -366,27 +360,47 @@ def _supports_secure_dirfd():
         and os.open in os.supports_dir_fd
         and os.stat in os.supports_dir_fd
         and os.stat in os.supports_follow_symlinks
+        and os.mkdir in os.supports_dir_fd
+        and os.rmdir in os.supports_dir_fd
         and os.unlink in os.supports_dir_fd
-        and os.rename in os.supports_dir_fd
     )
 
 
-def _verify_pinned_output(directory_fd, output):
-    """Ensure the current output path still names the directory pinned by fd."""
-    pinned = os.fstat(directory_fd)
+def _same_directory(pinned, current):
+    return (
+        stat.S_ISDIR(current.st_mode)
+        and current.st_dev == pinned.st_dev
+        and current.st_ino == pinned.st_ino
+    )
+
+
+def _verify_pinned_root(directory_fd, root):
+    """Ensure the workspace path still names the pinned root directory."""
     try:
-        current = output.lstat()
+        current = root.lstat()
     except FileNotFoundError:
-        raise SpecError("output directory changed during scaffold creation")
-    if (
-        not stat.S_ISDIR(current.st_mode)
-        or current.st_dev != pinned.st_dev
-        or current.st_ino != pinned.st_ino
-    ):
-        raise SpecError("output directory changed during scaffold creation")
+        raise SpecError("workspace directory changed during scaffold creation")
+    if not _same_directory(os.fstat(directory_fd), current):
+        raise SpecError("workspace directory changed during scaffold creation")
 
 
-def _open_pinned_output(output):
+def _verify_pinned_entry(directory_fd, parent_fd, entry_name):
+    """Apply lstat semantics relative to the already pinned parent fd."""
+    try:
+        current = os.stat(entry_name, dir_fd=parent_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        raise SpecError("output ancestry changed during scaffold creation")
+    if not _same_directory(os.fstat(directory_fd), current):
+        raise SpecError("output ancestry changed during scaffold creation")
+
+
+def _verify_pinned_chain(workspace_fd, workspace, edges):
+    _verify_pinned_root(workspace_fd, workspace)
+    for directory_fd, parent_fd, entry_name in edges:
+        _verify_pinned_entry(directory_fd, parent_fd, entry_name)
+
+
+def _open_pinned_workspace(workspace):
     if not _supports_secure_dirfd():
         raise SpecError(
             "secure directory-relative writes are unavailable on this platform; "
@@ -394,103 +408,108 @@ def _open_pinned_output(output):
         )
     try:
         directory_fd = os.open(
-            str(output), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+            str(workspace), os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
         )
     except OSError as exc:
-        raise SpecError(f"could not securely open output directory: {exc}")
+        raise SpecError(f"could not securely open workspace directory: {exc}")
     try:
-        _verify_pinned_output(directory_fd, output)
+        _verify_pinned_root(directory_fd, workspace)
     except Exception:
         os.close(directory_fd)
         raise
     return directory_fd
 
 
-def _validate_generated_targets(directory_fd, target_names):
-    """Retain the explicit refusal to replace symlinks or non-files."""
-    for target_name in target_names:
+def _open_child_directory(parent_fd, entry_name):
+    try:
+        child_fd = os.open(
+            entry_name,
+            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+            dir_fd=parent_fd,
+        )
+    except OSError as exc:
+        raise SpecError(
+            f"output component is not a safe directory: {entry_name}: {exc}"
+        ) from exc
+    try:
+        _verify_pinned_entry(child_fd, parent_fd, entry_name)
+    except Exception:
+        os.close(child_fd)
+        raise
+    return child_fd
+
+
+def _unlink_if_present(directory_fd, entry_name):
+    try:
+        os.unlink(entry_name, dir_fd=directory_fd)
+    except FileNotFoundError:
+        pass
+
+
+def _write_new_file(directory_fd, target_name, content):
+    descriptor = os.open(
+        target_name,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+        0o600,
+        dir_fd=directory_fd,
+    )
+    try:
         try:
-            target = os.stat(
-                target_name, dir_fd=directory_fd, follow_symlinks=False
-            )
-        except FileNotFoundError:
-            continue
-        if stat.S_ISLNK(target.st_mode) or not stat.S_ISREG(target.st_mode):
-            raise SpecError(
-                f"refusing to replace symlink or non-file path: {target_name}"
-            )
+            stream = os.fdopen(descriptor, "w", encoding="utf-8", newline="")
+        except Exception:
+            os.close(descriptor)
+            raise
+        with stream:
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+    except Exception:
+        _unlink_if_present(directory_fd, target_name)
+        raise
 
 
-def _atomic_write_files(directory_fd, files):
-    """Write UTF-8 files through pinned-dirfd temps and atomic replacement.
+def _create_files(directory_fd, files):
+    """Create a complete two-file scaffold inside a newly created directory.
 
-    Replacing the directory entry rather than opening an existing destination
-    prevents writes from following a hardlink or a target swapped to a symlink
-    after validation. Every still-pending temporary is removed on failure.
+    All names are opened with O_EXCL relative to the pinned output fd. On any
+    failure, every already-created generated file is removed before the error
+    escapes.
     """
-    pending = []
+    files = tuple(files)
+    created = []
     try:
         for target_name, content in files:
-            while True:
-                temp_name = f".{target_name}.{secrets.token_hex(12)}.tmp"
-                try:
-                    descriptor = os.open(
-                        temp_name,
-                        os.O_WRONLY
-                        | os.O_CREAT
-                        | os.O_EXCL
-                        | os.O_NOFOLLOW,
-                        0o600,
-                        dir_fd=directory_fd,
-                    )
-                    break
-                except FileExistsError:
-                    continue
-            pending.append((temp_name, target_name))
-            try:
-                stream = os.fdopen(
-                    descriptor, "w", encoding="utf-8", newline=""
-                )
-            except Exception:
-                os.close(descriptor)
-                raise
-            with stream:
-                stream.write(content)
-                stream.flush()
-                os.fsync(stream.fileno())
-
-        for temp_name, target_name in list(pending):
-            try:
-                os.replace(
-                    temp_name,
-                    target_name,
-                    src_dir_fd=directory_fd,
-                    dst_dir_fd=directory_fd,
-                )
-            except (TypeError, NotImplementedError) as exc:
-                raise SpecError(
-                    "secure directory-relative replacement is unavailable; "
-                    "refusing to scaffold"
-                ) from exc
-            pending.remove((temp_name, target_name))
+            _write_new_file(directory_fd, target_name, content)
+            created.append(target_name)
         os.fsync(directory_fd)
-    finally:
-        for temp_name, _target_name in pending:
-            try:
-                os.unlink(temp_name, dir_fd=directory_fd)
-            except FileNotFoundError:
-                pass
+    except Exception:
+        for target_name in created:
+            _unlink_if_present(directory_fd, target_name)
+        raise
 
 
-def scaffold_data(raw_spec, workspace_path, output_arg=None, force=False, created_at=None):
+def _remove_created_directories(created_entries):
+    """Remove newly created empty directories, deepest first."""
+    for parent_fd, entry_name in reversed(created_entries):
+        try:
+            os.rmdir(entry_name, dir_fd=parent_fd)
+        except OSError:
+            # An attacker may have renamed or replaced this path. The pinned
+            # child has already been emptied; never follow or delete the
+            # replacement, and do not mask the original failure.
+            pass
+
+
+def scaffold_data(raw_spec, workspace_path, output_arg=None, created_at=None):
     """Validate an in-memory approved spec and create its local scaffold."""
     spec = validate_spec(raw_spec)
 
-    workspace = Path(workspace_path)
+    workspace = Path(workspace_path).resolve()
     if not workspace.is_dir():
         raise SpecError("--workspace must be an existing directory")
     relative_output = output_arg or f"forecast-agents/{_slug(spec['name'])}"
-    output = _inside_workspace(workspace, relative_output)
+    output_parts = _relative_output_parts(relative_output)
+    output = workspace.joinpath(*output_parts)
     if not _supports_secure_dirfd():
         raise SpecError(
             "secure directory-relative writes are unavailable on this platform; "
@@ -500,13 +519,6 @@ def scaffold_data(raw_spec, workspace_path, output_arg=None, force=False, create
     spec_file = output / target_names[0]
     instructions_file = output / target_names[1]
 
-    if output.exists() and not force:
-        raise SpecError(
-            f"output already exists: {output}; "
-            "pass --force only after explicit approval"
-        )
-    if output.exists() and not output.is_dir():
-        raise SpecError(f"output exists and is not a directory: {output}")
     timestamp = created_at or (
         dt.datetime.now(dt.timezone.utc)
         .replace(microsecond=0)
@@ -527,27 +539,66 @@ def scaffold_data(raw_spec, workspace_path, output_arg=None, force=False, create
     spec_text = json.dumps(rendered_spec, indent=2, ensure_ascii=False) + "\n"
     instructions_text = render_instructions(spec)
 
-    if force:
-        output.mkdir(parents=True, exist_ok=True)
-    else:
-        output.parent.mkdir(parents=True, exist_ok=True)
+    workspace_fd = _open_pinned_workspace(workspace)
+    open_fds = [workspace_fd]
+    edges = []
+    created_parents = []
+    output_created = False
+    output_fd = None
+    try:
+        parent_fd = workspace_fd
+        for component in output_parts[:-1]:
+            try:
+                child_fd = _open_child_directory(parent_fd, component)
+            except SpecError as exc:
+                cause = exc.__cause__
+                if not isinstance(cause, FileNotFoundError):
+                    raise
+                try:
+                    os.mkdir(component, 0o755, dir_fd=parent_fd)
+                    created_parents.append((parent_fd, component))
+                except FileExistsError:
+                    pass
+                child_fd = _open_child_directory(parent_fd, component)
+            open_fds.append(child_fd)
+            edges.append((child_fd, parent_fd, component))
+            parent_fd = child_fd
+
+        output_name = output_parts[-1]
         try:
-            output.mkdir()
+            os.mkdir(output_name, 0o755, dir_fd=parent_fd)
         except FileExistsError:
             raise SpecError(
-                f"output appeared after validation: {output}; refusing to overwrite"
+                f"output already exists: {output}; choose a new output path"
             )
-    directory_fd = _open_pinned_output(output)
-    try:
-        if force:
-            _validate_generated_targets(directory_fd, target_names)
-        _atomic_write_files(
-            directory_fd,
+        output_created = True
+        output_fd = _open_child_directory(parent_fd, output_name)
+        open_fds.append(output_fd)
+        edges.append((output_fd, parent_fd, output_name))
+        _verify_pinned_chain(workspace_fd, workspace, edges)
+
+        _create_files(
+            output_fd,
             ((target_names[0], spec_text), (target_names[1], instructions_text)),
         )
-        _verify_pinned_output(directory_fd, output)
+        _verify_pinned_chain(workspace_fd, workspace, edges)
+    except Exception:
+        if output_fd is not None:
+            for target_name in target_names:
+                _unlink_if_present(output_fd, target_name)
+        if output_created:
+            try:
+                os.rmdir(output_parts[-1], dir_fd=parent_fd)
+            except OSError:
+                # Preserve the original error if the directory entry was
+                # concurrently renamed/replaced; generated files are already
+                # removed through the pinned output fd.
+                pass
+        _remove_created_directories(created_parents)
+        raise
     finally:
-        os.close(directory_fd)
+        for directory_fd in reversed(open_fds):
+            os.close(directory_fd)
     return {
         "status": "created",
         "output_directory": str(output),
@@ -556,7 +607,7 @@ def scaffold_data(raw_spec, workspace_path, output_arg=None, force=False, create
     }
 
 
-def scaffold(spec_path, workspace_path, output_arg, force=False, created_at=None):
+def scaffold(spec_path, workspace_path, output_arg, created_at=None):
     spec_path = Path(spec_path)
     if spec_path.stat().st_size > MAX_SPEC_BYTES:
         raise SpecError("spec file exceeds the 1 MiB limit")
@@ -567,7 +618,7 @@ def scaffold(spec_path, workspace_path, output_arg, force=False, created_at=None
         )
     except json.JSONDecodeError as exc:
         raise SpecError(f"spec is not valid JSON: {exc}")
-    return scaffold_data(raw, workspace_path, output_arg, force, created_at)
+    return scaffold_data(raw, workspace_path, output_arg, created_at)
 
 
 def parse_args(argv=None):
@@ -582,11 +633,6 @@ def parse_args(argv=None):
         "--output",
         help="Relative output directory (default: forecast-agents/<agent-slug>)",
     )
-    parser.add_argument(
-        "--force",
-        action="store_true",
-        help="Replace only the two generated files in an existing directory",
-    )
     parser.add_argument("--created-at", help=argparse.SUPPRESS)
     return parser.parse_args(argv)
 
@@ -594,7 +640,7 @@ def parse_args(argv=None):
 def main(argv=None):
     args = parse_args(argv)
     try:
-        result = scaffold(args.spec, args.workspace, args.output, args.force, args.created_at)
+        result = scaffold(args.spec, args.workspace, args.output, args.created_at)
     except (OSError, SpecError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

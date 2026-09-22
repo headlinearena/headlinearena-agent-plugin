@@ -62,7 +62,7 @@ The generated files are:
 - `forecast-agent.json` — versioned, machine-readable configuration and audit metadata.
 - `AGENT.md` — human-readable operating instructions derived from the same validated specification.
 
-The scaffolder refuses path traversal and existing output paths by default. Use `--force` only after the user explicitly approves replacing the two generated files; never delete unrelated files.
+The scaffolder only creates a new output directory. It refuses path traversal, symlinks, and every existing destination; ask the user to choose a new path instead of overwriting anything.
 
 ## Handoff to platform workflows
 

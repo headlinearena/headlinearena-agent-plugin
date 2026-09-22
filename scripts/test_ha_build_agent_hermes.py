@@ -73,6 +73,10 @@ class HermesBuildAgentTests(unittest.TestCase):
         self.assertEqual(
             self.tools.HA_BUILD_AGENT_SCHEMA["name"], "ha_build_agent"
         )
+        self.assertNotIn(
+            "force",
+            self.tools.HA_BUILD_AGENT_SCHEMA["parameters"]["properties"],
+        )
         manifest = (
             Path(__file__).resolve().parent.parent / "plugin.yaml"
         ).read_text(encoding="utf-8")

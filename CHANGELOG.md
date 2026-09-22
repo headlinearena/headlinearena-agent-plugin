@@ -16,11 +16,12 @@ builder's `BUILDER_VERSION` — see the versioning rules in `CLAUDE.md`.
   `forecast-agent.json` plus `AGENT.md` without making network calls. It supports
   ternary, binary, numeric, and ordered outcomes; requires a reviewed Forecasting for
   Good eligibility attestation; gives binary outcomes an explicit positive label;
-  blocks path traversal and symlink escapes; and refuses existing output paths unless
-  replacement is explicitly requested. Writes pin and verify the output directory's
-  file descriptor, then use directory-relative temporary creation, cleanup, and atomic
-  replacement so parent-directory swaps and existing hardlinks are never followed.
-  Platforms without the required secure dirfd primitives fail closed.
+  and refuses path traversal, symlink components, and every existing output path.
+  There is no destructive overwrite mode. Writes open the Workspace root once, walk
+  or create every output component through pinned directory descriptors, then create
+  the two files through the pinned new output directory. Parent swaps cannot redirect
+  writes, and any file failure removes both files and the new output directory. Platforms
+  without the required secure dirfd primitives fail closed.
 - **Native Hermes parity.** Added the offline `ha_build_agent` tool. Hermes host agents
   conduct the guided/custom conversation, then pass the approved v1 spec to the same
   deterministic scaffolder; the tool makes no backend or network request.

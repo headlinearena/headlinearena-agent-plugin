@@ -133,7 +133,7 @@ HA_BUILD_AGENT_SCHEMA = {
         "not conduct that conversation or infer social value; it only validates the approved "
         "spec and writes forecast-agent.json plus AGENT.md. It makes no network/backend call "
         "and does not register, deploy, schedule, fund, or run the agent. Existing output is "
-        "refused unless force=true after explicit user approval."
+        "always refused; ask the user to choose a new path."
     ),
     "parameters": {
         "type": "object",
@@ -159,14 +159,6 @@ HA_BUILD_AGENT_SCHEMA = {
                     "Absolute paths and '..' traversal are rejected."
                 ),
             },
-            "force": {
-                "type": "boolean",
-                "description": (
-                    "Replace only forecast-agent.json and AGENT.md in an existing directory. "
-                    "Set true only after explicit user approval."
-                ),
-                "default": False,
-            },
         },
         "required": ["spec"],
     },
@@ -180,7 +172,6 @@ def handle_ha_build_agent(args: dict, **kw) -> str:
             args["spec"],
             args.get("workspace", "."),
             args.get("output"),
-            args.get("force", False),
         )
     except (OSError, agent_scaffold.SpecError) as exc:
         return tool_error(str(exc))

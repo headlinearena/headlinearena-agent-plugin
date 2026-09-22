@@ -165,103 +165,61 @@ class ScaffoldTests(unittest.TestCase):
             scaffold.scaffold(self.spec_file, self.workspace, "existing")
         self.assertEqual(sentinel.read_text(encoding="utf-8"), "keep")
 
-    def test_force_preserves_unrelated_files(self):
-        output = self.workspace / "existing"
-        output.mkdir()
-        sentinel = output / "keep.txt"
-        sentinel.write_text("keep", encoding="utf-8")
-        scaffold.scaffold(
-            self.spec_file,
-            self.workspace,
-            "existing",
-            force=True,
-            created_at="2026-09-22T12:00:00Z",
-        )
-        self.assertEqual(sentinel.read_text(encoding="utf-8"), "keep")
-        self.assertTrue((output / "forecast-agent.json").is_file())
+    def test_second_file_failure_removes_entire_scaffold(self):
+        real_write = scaffold._write_new_file
+        write_count = 0
 
-    @unittest.skipUnless(hasattr(os, "link"), "hardlinks unavailable")
-    def test_force_replaces_hardlink_without_mutating_other_link(self):
-        output = self.workspace / "existing"
-        output.mkdir()
-        outside = Path(self.temp.name) / "outside.json"
-        outside.write_text("do not mutate", encoding="utf-8")
-        os.link(outside, output / "forecast-agent.json")
-        (output / "AGENT.md").write_text("old instructions", encoding="utf-8")
-
-        scaffold.scaffold(
-            self.spec_file,
-            self.workspace,
-            "existing",
-            force=True,
-            created_at="2026-09-22T12:00:00Z",
-        )
-
-        self.assertEqual(outside.read_text(encoding="utf-8"), "do not mutate")
-        generated = json.loads(
-            (output / "forecast-agent.json").read_text(encoding="utf-8")
-        )
-        self.assertEqual(generated["schema_version"], 1)
-        self.assertNotEqual(
-            outside.stat().st_ino, (output / "forecast-agent.json").stat().st_ino
-        )
-
-    def test_replace_failure_cleans_pending_temp_files(self):
-        real_replace = os.replace
-        replace_count = 0
-
-        def fail_second_replace(source, destination, **kwargs):
-            nonlocal replace_count
-            replace_count += 1
-            if replace_count == 2:
-                raise OSError("simulated second replace failure")
-            return real_replace(source, destination, **kwargs)
+        def fail_second_write(directory_fd, target_name, content):
+            nonlocal write_count
+            write_count += 1
+            if write_count == 2:
+                raise OSError("simulated second file failure")
+            return real_write(directory_fd, target_name, content)
 
         with mock.patch.object(
-            scaffold.os, "replace", side_effect=fail_second_replace
+            scaffold, "_write_new_file", side_effect=fail_second_write
         ):
-            with self.assertRaisesRegex(OSError, "second replace failure"):
+            with self.assertRaisesRegex(OSError, "second file failure"):
                 scaffold.scaffold(
                     self.spec_file,
                     self.workspace,
-                    "partial",
+                    "new-parent/partial",
                     created_at="2026-09-22T12:00:00Z",
                 )
 
-        output = self.workspace / "partial"
-        self.assertEqual(list(output.glob(".*.tmp")), [])
+        self.assertFalse((self.workspace / "new-parent").exists())
 
     @unittest.skipUnless(hasattr(os, "symlink"), "symlinks unavailable")
-    def test_output_directory_swap_never_writes_through_outside_symlink(self):
-        output = self.workspace / "race"
-        moved = self.workspace / "race-moved"
+    def test_ancestor_swap_never_writes_through_outside_symlink(self):
         outside = Path(self.temp.name) / "outside"
         outside.mkdir()
-        real_atomic_write = scaffold._atomic_write_files
+        real_create_files = scaffold._create_files
 
-        def swap_output_then_write(directory_fd, files):
-            output.rename(moved)
-            output.symlink_to(outside, target_is_directory=True)
-            return real_atomic_write(directory_fd, files)
+        def swap_ancestor_then_write(directory_fd, files):
+            parent = self.workspace / "parent"
+            moved_parent = self.workspace / "parent-moved"
+            parent.rename(moved_parent)
+            parent.symlink_to(outside, target_is_directory=True)
+            return real_create_files(directory_fd, files)
 
         with mock.patch.object(
             scaffold,
-            "_atomic_write_files",
-            side_effect=swap_output_then_write,
+            "_create_files",
+            side_effect=swap_ancestor_then_write,
         ):
             with self.assertRaisesRegex(
-                scaffold.SpecError, "output directory changed"
+                scaffold.SpecError, "output ancestry changed"
             ):
                 scaffold.scaffold(
                     self.spec_file,
                     self.workspace,
-                    "race",
+                    "parent/race",
                     created_at="2026-09-22T12:00:00Z",
                 )
 
         self.assertEqual(list(outside.iterdir()), [])
-        self.assertTrue((moved / "forecast-agent.json").is_file())
-        self.assertTrue((moved / "AGENT.md").is_file())
+        moved = self.workspace / "parent-moved" / "race"
+        self.assertFalse(moved.exists())
 
     def test_fails_closed_without_secure_dirfd_support(self):
         output = self.workspace / "unsupported"
@@ -290,20 +248,8 @@ class ScaffoldTests(unittest.TestCase):
         outside = Path(self.temp.name) / "outside"
         outside.mkdir()
         (self.workspace / "link").symlink_to(outside, target_is_directory=True)
-        with self.assertRaisesRegex(scaffold.SpecError, "outside"):
-                scaffold.scaffold(self.spec_file, self.workspace, "link/agent")
-
-    @unittest.skipUnless(hasattr(os, "symlink"), "symlinks unavailable")
-    def test_force_refuses_generated_file_symlink(self):
-        output = self.workspace / "existing"
-        output.mkdir()
-        outside = Path(self.temp.name) / "outside.json"
-        outside.write_text("do not replace", encoding="utf-8")
-        (output / "forecast-agent.json").symlink_to(outside)
-        with self.assertRaisesRegex(scaffold.SpecError, "symlink"):
-            scaffold.scaffold(self.spec_file, self.workspace, "existing", force=True)
-        self.assertEqual(outside.read_text(encoding="utf-8"), "do not replace")
-
+        with self.assertRaisesRegex(scaffold.SpecError, "safe directory"):
+            scaffold.scaffold(self.spec_file, self.workspace, "link/agent")
 
 if __name__ == "__main__":
     unittest.main()
