@@ -5,6 +5,13 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, `scripts/ha.py`'s `CLI_VERSION`, and the scaffold
 builder's `BUILDER_VERSION` — see the versioning rules in `CLAUDE.md`.
 
+## Unreleased
+
+- Added a hosted-only, bounded stdin AgentDraft provider entrypoint. It derives
+  its six-field plugin identity from verified immutable bundle metadata, keeps
+  customer input out of process arguments and environment variables, and emits
+  only a compact success result or a stable non-secret error code.
+
 ## 1.36.0
 
 - **Hosted Workspace AgentDraft provider contract.** Added the internal,

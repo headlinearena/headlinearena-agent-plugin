@@ -57,7 +57,9 @@ offline `ha_build_agent` tool calls the shared scaffold validator directly.
 
 Hosted Workspace runtimes use the additive internal
 `workspace-conversation-v1` AgentDraft build adapter in
-`scripts/workspace_agent_build.py`; the backend transforms this provider
+`scripts/workspace_agent_build.py`; the isolated one-shot runtime invokes
+`scripts/workspace_agent_build_provider.py` and sends the customer request only on
+stdin. The backend transforms this provider
 contract rather than exposing it to browsers. It delegates writes to the same
 secure offline scaffolder and returns canonical spec and generated-file digests
 with Workspace-relative paths. See

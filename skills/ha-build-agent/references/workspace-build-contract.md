@@ -112,25 +112,54 @@ The result intentionally omits the idempotency key, Workspace reference,
 credentials, absolute paths, execution mode, and deployment or registration
 claims.
 
-## Offline invocation
+## Offline one-shot invocation
 
-Write the complete request to a temporary file outside the intended output
-directory, then invoke:
+The isolated hosted runtime passes the complete request only on stdin, never in
+Docker argv, environment variables, labels, or a request file:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workspace_agent_build.py" \
-  --request /path/to/agent-draft-request.json \
-  --trusted-snapshot /run/headlinearena/verified-plugin-snapshot.json \
-  --workspace /path/to/trusted-tenant-workspace
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workspace_agent_build_provider.py" \
+  --request-stdin \
+  --workspace /path/to/trusted-tenant-workspace \
+  < /dev/stdin
 ```
 
-The adapter validates the envelope and calls the same
+The runtime fixes both the Workspace root and bundled-plugin root; neither comes
+from the request. `BUNDLED_BUILD.json` must attest the immutable name, version,
+commit, manifest SHA-256, archive SHA-256, required skill, and successful archive
+verification. The entrypoint hashes the installed Codex manifest and verifies
+those values before deriving the six-field provider snapshot. A request-supplied
+snapshot is only compared with that trusted identity and is never trusted by
+itself.
+
+The trusted bundle metadata has this exact shape (digests are lowercase hex
+without the wire contract's `sha256:` prefix):
+
+```json
+{
+  "name": "headlinearena-agent-plugin",
+  "version": "1.36.0",
+  "commit": "<40 lowercase hex characters>",
+  "manifest_sha256": "<64 lowercase hex characters>",
+  "archive_sha256": "<64 lowercase hex characters>",
+  "required_skill": "ha-build-agent",
+  "archive_verified": true
+}
+```
+
+For shared staging volumes, `--workspace` must name a fresh, runtime-created
+per-job directory such as `/staging/<opaque-staging-ref>`. The provider retains
+the request's logical `output_directory`, so the two files are created beneath
+`/staging/<opaque-staging-ref>/<output_directory>/`; it does not flatten or move
+them into the staging root.
+
+stdin is bounded at 2 MiB and must contain one finite JSON value with no trailing
+document or duplicate object keys. stdout contains exactly one bounded compact
+JSON result on success. Failures emit only a stable error code on stderr, never
+request content. The adapter validates the envelope and calls the same
 `scaffold_forecast_agent.scaffold_data` function used by the standalone and
-Hermes builders. The trusted snapshot is a separate runtime-owned input, never
-copied from the request. The runtime must derive it from verified
-`BUNDLED_BUILD.json` version/commit/archive metadata and the actual installed
-manifest digest. The adapter fails closed unless the request snapshot exactly
-matches that trusted value. It never fetches or upgrades the plugin.
+Hermes builders. It fails closed unless the request snapshot exactly matches
+the derived trusted value. It never fetches or upgrades the plugin.
 
 The canonical provider fixture is
 `tests/fixtures/workspace_agent_build_v1.json`. Its commit and bundle digests
