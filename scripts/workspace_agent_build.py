@@ -43,6 +43,7 @@ PLUGIN_SNAPSHOT_FIELDS = {
 DRAFT_FIELDS = {"draft_id", "version", "spec", "output_directory"}
 DIGEST_PATTERN = re.compile(r"sha256:[0-9a-f]{64}")
 COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}")
+EXTENSION_KEY_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9_.-]{0,63}")
 FORBIDDEN_STANDALONE_COMPONENTS = {
     "auth",
     "authentication",
@@ -50,9 +51,14 @@ FORBIDDEN_STANDALONE_COMPONENTS = {
     "bearer",
     "credential",
     "credentials",
+    "jwt",
+    "key",
+    "oauth",
+    "pat",
     "password",
     "secret",
     "secrets",
+    "token",
 }
 FORBIDDEN_CREDENTIAL_SUFFIXES = {
     "accesskey",
@@ -137,7 +143,9 @@ def _exact_fields(value, path, expected):
     missing = sorted(expected - set(obj))
     unknown = sorted(set(obj) - expected)
     if missing:
-        raise ContractError(f"{path} is missing required field(s): {', '.join(missing)}")
+        raise ContractError(
+            f"{path} is missing required field(s): {', '.join(missing)}"
+        )
     if unknown:
         raise ContractError(f"{path} has unknown field(s): {', '.join(unknown)}")
     return obj
@@ -156,7 +164,10 @@ def _text(value, path, *, max_length=512):
 
 
 def _key_components(key):
-    with_word_boundaries = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", str(key))
+    with_acronym_boundaries = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", str(key))
+    with_word_boundaries = re.sub(
+        r"([a-z0-9])([A-Z])", r"\1_\2", with_acronym_boundaries
+    )
     return tuple(
         component
         for component in re.sub(
@@ -172,17 +183,12 @@ def _forbidden_key(components):
         any(component in FORBIDDEN_STANDALONE_COMPONENTS for component in components)
         or (bool(components) and components[-1] == "token")
         or any(
-            alphanumeric.endswith(suffix)
-            for suffix in FORBIDDEN_CREDENTIAL_SUFFIXES
+            alphanumeric.endswith(suffix) for suffix in FORBIDDEN_CREDENTIAL_SUFFIXES
         )
         or any(
-            alphanumeric.startswith(prefix)
-            for prefix in FORBIDDEN_CREDENTIAL_PREFIXES
+            alphanumeric.startswith(prefix) for prefix in FORBIDDEN_CREDENTIAL_PREFIXES
         )
-        or any(
-            component in FORBIDDEN_LIFECYCLE_COMPONENTS
-            for component in components
-        )
+        or any(component in FORBIDDEN_LIFECYCLE_COMPONENTS for component in components)
         or alphanumeric in FORBIDDEN_LIFECYCLE_ALIASES
     )
 
@@ -191,15 +197,20 @@ def _reject_forbidden_fields(value, path="request"):
     if isinstance(value, dict):
         for key, nested in value.items():
             field_path = f"{path}.{key}"
+            in_extensions = path == "request.draft.spec.extensions" or path.startswith(
+                ("request.draft.spec.extensions.", "request.draft.spec.extensions[")
+            )
+            if in_extensions and (
+                not isinstance(key, str) or EXTENSION_KEY_PATTERN.fullmatch(key) is None
+            ):
+                raise ContractError(f"{path} contains an invalid extension key")
             components = _key_components(key)
             if (
                 field_path not in ALLOWED_CONTRACT_KEY_PATHS
                 and key not in ALLOWED_EXACT_KEYS
                 and _forbidden_key(components)
             ):
-                raise ContractError(
-                    f"{field_path} is not allowed in a build envelope"
-                )
+                raise ContractError(f"{field_path} is not allowed in a build envelope")
             _reject_forbidden_fields(nested, field_path)
     elif isinstance(value, list):
         for index, nested in enumerate(value):
@@ -231,27 +242,17 @@ def _relative_output(value):
 
 
 def _plugin_snapshot(value, path):
-    snapshot = _exact_fields(
-        value, path, PLUGIN_SNAPSHOT_FIELDS
-    )
+    snapshot = _exact_fields(value, path, PLUGIN_SNAPSHOT_FIELDS)
     name = _text(snapshot["name"], f"{path}.name")
     version = _text(snapshot["version"], f"{path}.version")
     skill = _text(snapshot["skill"], f"{path}.skill")
-    if (
-        name != PLUGIN_NAME
-        or version != PLUGIN_VERSION
-        or skill != PLUGIN_SKILL
-    ):
+    if name != PLUGIN_NAME or version != PLUGIN_VERSION or skill != PLUGIN_SKILL:
         raise ContractError(
             "request.plugin_snapshot does not identify this plugin and skill version"
         )
-    commit_sha = _text(
-        snapshot["commit_sha"], f"{path}.commit_sha", max_length=40
-    )
+    commit_sha = _text(snapshot["commit_sha"], f"{path}.commit_sha", max_length=40)
     if not COMMIT_PATTERN.fullmatch(commit_sha):
-        raise ContractError(
-            f"{path}.commit_sha must be 40 lowercase hex characters"
-        )
+        raise ContractError(f"{path}.commit_sha must be 40 lowercase hex characters")
     return {
         "name": name,
         "version": version,
@@ -260,9 +261,7 @@ def _plugin_snapshot(value, path):
         "manifest_digest": _digest(
             snapshot["manifest_digest"], f"{path}.manifest_digest"
         ),
-        "archive_digest": _digest(
-            snapshot["archive_digest"], f"{path}.archive_digest"
-        ),
+        "archive_digest": _digest(snapshot["archive_digest"], f"{path}.archive_digest"),
     }
 
 
@@ -270,9 +269,7 @@ def validate_request(raw_request):
     request = _exact_fields(raw_request, "request", REQUEST_FIELDS)
     _reject_forbidden_fields(request)
     if request["contract_version"] != CONTRACT_VERSION:
-        raise ContractError(
-            f"request.contract_version must be {CONTRACT_VERSION}"
-        )
+        raise ContractError(f"request.contract_version must be {CONTRACT_VERSION}")
     if request["task_kind"] != TASK_KIND:
         raise ContractError(f"request.task_kind must be {TASK_KIND}")
 
@@ -285,9 +282,7 @@ def validate_request(raw_request):
     return {
         "contract_version": CONTRACT_VERSION,
         "request_id": _text(request["request_id"], "request.request_id"),
-        "idempotency_key": _text(
-            request["idempotency_key"], "request.idempotency_key"
-        ),
+        "idempotency_key": _text(request["idempotency_key"], "request.idempotency_key"),
         "workspace_ref": _text(request["workspace_ref"], "request.workspace_ref"),
         "task_kind": TASK_KIND,
         "plugin_snapshot": _plugin_snapshot(

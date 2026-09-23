@@ -47,6 +47,10 @@ request, invokes the provider, and transforms the result into its persisted
 [agent-spec.md](agent-spec.md). The request accepts no additional envelope,
 snapshot, or draft fields. Credential-bearing keys, `execution_mode`, and
 deployment or registration claims are rejected even under `spec.extensions`.
+Every extension key must match ASCII `[A-Za-z][A-Za-z0-9_.-]{0,63}`. Credential
+components such as `token`, `key`, `pat`, `jwt`, `oauth`, `secret`, `auth`, and
+`password` are rejected at every nesting depth; `activation_function` remains
+the sole explicit lifecycle-key exception.
 
 `workspace_ref` is an opaque control-plane reference. It is never a filesystem
 path. The trusted runtime supplies the tenant Workspace root as a separate

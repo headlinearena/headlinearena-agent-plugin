@@ -181,7 +181,9 @@ class WorkspaceAgentBuildStdinTests(unittest.TestCase):
     def test_error_is_a_stable_code_and_never_echoes_customer_secret(self):
         request = copy.deepcopy(self.request)
         customer_secret = "super-sensitive-customer-value"
-        request["draft"]["spec"]["extensions"] = {"api_key": customer_secret}
+        request["draft"]["spec"]["extensions"] = {
+            "openai_api_key_value": customer_secret
+        }
         stdout = io.BytesIO()
         stderr = io.StringIO()
         exit_code = stdin_provider.main(
@@ -200,6 +202,15 @@ class WorkspaceAgentBuildStdinTests(unittest.TestCase):
         self.assertEqual(stdout.getvalue(), b"")
         self.assertEqual(stderr.getvalue(), "invalid_request\n")
         self.assertNotIn(customer_secret, stderr.getvalue())
+
+    def test_rejects_non_ascii_confusable_extension_key(self):
+        request = copy.deepcopy(self.request)
+        request["draft"]["spec"]["extensions"] = {"api_кey": "hidden"}
+        with self.assertRaisesRegex(
+            stdin_provider.ProviderEntrypointError, "invalid_request"
+        ):
+            self.invoke_provider(self.request_bytes(request))
+        self.assertFalse((self.workspace / "forecast-agents").exists())
 
     def test_bundle_identity_is_computed_not_accepted_from_the_request(self):
         metadata_path = self.bundle / "BUNDLED_BUILD.json"

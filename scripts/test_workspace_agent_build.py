@@ -99,12 +99,17 @@ class WorkspaceAgentBuildContractTests(unittest.TestCase):
         for key in (
             "apikey",
             "openaiapikey",
+            "openai_api_key_value",
             "accesstoken",
+            "access_token_value",
             "authorizationheader",
             "clientsecret",
             "secretkey",
             "password",
             "privatekey",
+            "github_pat",
+            "jwt_config",
+            "oauth-client",
             "registrationid",
             "openai_api_key",
             "bearer_token",
@@ -152,19 +157,40 @@ class WorkspaceAgentBuildContractTests(unittest.TestCase):
                     self.build(request)
                 self.assertFalse((self.workspace / "forecast-agents").exists())
 
+    def test_rejects_non_ascii_or_malformed_extension_keys(self):
+        for key in (
+            "",
+            "_leading",
+            "9leading",
+            "contains space",
+            "contains/slash",
+            "api_кey",
+            "a" * 65,
+        ):
+            with self.subTest(key=key):
+                request = copy.deepcopy(self.fixture["request"])
+                request["draft"]["spec"]["extensions"] = {key: "not-allowed"}
+                with self.assertRaisesRegex(
+                    workspace_build.ContractError, "invalid extension key"
+                ):
+                    self.build(request)
+                self.assertFalse((self.workspace / "forecast-agents").exists())
+
     def test_allows_legitimate_agent_spec_keys(self):
         request = copy.deepcopy(self.fixture["request"])
         request["draft"]["spec"]["operation"]["max_credits_per_run"] = 5
         request["draft"]["spec"]["extensions"] = {
-            "target_key": "GC",
-            "canonical_target_key": "GC",
-            "dataset_key": "macro-public-data",
-            "token_budget": 1000,
-            "max_output_tokens": 500,
-            "context_window_tokens": 16000,
+            "target_identifier": "GC",
+            "canonical_target_identifier": "GC",
+            "dataset_identifier": "macro-public-data",
+            "compute_budget": 1000,
+            "max_output_units": 500,
+            "context_window_units": 16000,
             "model_registry": "approved-models",
             "registry_source": "workspace-catalog",
             "activation_function": "gelu",
+            "A": True,
+            "a" * 64: {"nested.value-v1": True},
         }
         result = self.build(request)
         self.assertEqual(result["draft"]["status"], "draft")
@@ -177,9 +203,31 @@ class WorkspaceAgentBuildContractTests(unittest.TestCase):
         self.assertEqual(
             generated["extensions"], request["draft"]["spec"]["extensions"]
         )
-        self.assertEqual(
-            generated["schedule"], request["draft"]["spec"]["schedule"]
-        )
+        self.assertEqual(generated["schedule"], request["draft"]["spec"]["schedule"])
+
+    def test_rejects_sensitive_components_at_any_extension_depth(self):
+        for key in (
+            "token_budget",
+            "api.key.value",
+            "github-pat-value",
+            "jwtConfig",
+            "JWTConfig",
+            "oauth_client",
+            "OAuthClient",
+            "auth.mode",
+            "passwordHint",
+            "client_secret_value",
+        ):
+            with self.subTest(key=key):
+                request = copy.deepcopy(self.fixture["request"])
+                request["draft"]["spec"]["extensions"] = {
+                    "provider": [{"nested": {key: "not-allowed"}}]
+                }
+                with self.assertRaisesRegex(
+                    workspace_build.ContractError, "not allowed"
+                ):
+                    self.build(request)
+                self.assertFalse((self.workspace / "forecast-agents").exists())
 
     def test_fails_closed_when_request_snapshot_is_not_the_trusted_snapshot(self):
         request = copy.deepcopy(self.fixture["request"])
