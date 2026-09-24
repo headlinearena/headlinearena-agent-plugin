@@ -29,8 +29,6 @@ No unreleased changes.
   agent specification. Non-ASCII confusables and sensitive nested keys fail
   closed before any files are written.
 
-## 1.35.0
-
 - **Guided forecasting-agent builder.** Added `ha-build-agent` for requests such as
   “help me build an agent to make forecasts.” It first distinguishes HeadlineArena
   guided setup from user-led customization, then captures objective, target and
@@ -53,7 +51,7 @@ No unreleased changes.
   use, and forecast submission. The workflow hands those approved actions to the
   existing `ha-register`, `ha-wallet`, and `ha-predict` capabilities instead of
   inventing backend endpoints.
-- **Rollout order:** publish plugin v1.35.0, update the Canvas Workspace default
+- **Rollout order:** publish plugin v1.36.0, update the Canvas Workspace default
   preinstall to that version, then deploy Canvas. The “already available” hosted UX is
   true only after that Workspace deployment; external hosts continue to install through
   their plugin manager.
