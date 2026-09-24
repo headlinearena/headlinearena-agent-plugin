@@ -7,10 +7,7 @@ builder's `BUILDER_VERSION` — see the versioning rules in `CLAUDE.md`.
 
 ## Unreleased
 
-- Added a hosted-only, bounded stdin AgentDraft provider entrypoint. It derives
-  its six-field plugin identity from verified immutable bundle metadata, keeps
-  customer input out of process arguments and environment variables, and emits
-  only a compact success result or a stable non-secret error code.
+No unreleased changes.
 
 ## 1.36.0
 
@@ -23,6 +20,14 @@ builder's `BUILDER_VERSION` — see the versioning rules in `CLAUDE.md`.
   path. Workspace references remain opaque, all reported paths are relative,
   and existing destinations, symlinks, traversal, overwrite, and network access
   remain fail-closed.
+- Added the hosted-only, bounded stdin AgentDraft provider entrypoint used by
+  Canvas. It derives its six-field plugin identity from verified immutable
+  bundle metadata, keeps customer input out of process arguments and
+  environment variables, and emits only a compact success result or a stable
+  non-secret error code.
+- Hardened extension-key validation across the Workspace request and generated
+  agent specification. Non-ASCII confusables and sensitive nested keys fail
+  closed before any files are written.
 
 ## 1.35.0
 
