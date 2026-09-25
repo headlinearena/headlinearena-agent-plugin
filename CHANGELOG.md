@@ -5,6 +5,20 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.35.0
+
+- **Full probability vectors on financial ternary predictions.** `ha.py predict`
+  gains `--probabilities` — a JSON object with exactly the keys
+  bearish/neutral/bullish (values ≥ 0, summing to 1, tolerance 1e-6) as an
+  alternative to `--direction`/`--confidence`. The vector is stored and
+  Brier-scored verbatim; the backend derives direction and confidence as the
+  vector's argmax, so leaderboards, the confidence-weighted challenge score,
+  and calibration displays behave identically for both encodings. The legacy
+  direction+confidence encoding remains fully supported (its Brier vector
+  splits the remaining 1−confidence evenly across the other two outcomes).
+  Binary price-event challenges (barrier/threshold) accept the same field
+  with the keys bullish/bearish via the raw API. Requires backend v3.184.0+.
+
 ## 1.34.0
 
 - **Raw sample sets on numeric Civic Index forecasts.** `ha.py forecast` gains

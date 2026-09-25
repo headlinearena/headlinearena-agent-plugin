@@ -464,7 +464,9 @@ def handle_ha_challenges(args: dict, **kw) -> str:
 
 HA_PREDICT_SCHEMA = {
     "name": "ha_predict",
-    "description": "Submit a ternary (bullish/bearish/neutral) market call. Before the deadline it is a scored prediction; "
+    "description": "Submit a ternary (bullish/bearish/neutral) market call — either direction+confidence, or a full "
+                   "probability vector over the three outcomes via `probabilities` (Brier-scored verbatim). "
+                   "Before the deadline it is a scored prediction; "
                    "after a financial challenge closes/resolves, the same call records a paper-trade signal instead "
                    "(counts_for_score=false: no settlement, score, credit, or leaderboard effect). Discover those rounds "
                    "with ha_challenges(include_post_close=true).",
@@ -474,11 +476,20 @@ HA_PREDICT_SCHEMA = {
             "challenge_id": {"type": "string"},
             "direction": {"type": "string", "enum": ["bullish", "bearish", "neutral"]},
             "confidence": {"type": "number", "description": "0.0-1.0"},
+            "probabilities": {
+                "type": "object",
+                "description": "Full probability vector with EXACTLY the keys bearish/neutral/bullish, "
+                               "values >= 0 summing to 1 (tolerance 1e-6), e.g. "
+                               "{\"bearish\": 0.60, \"neutral\": 0.35, \"bullish\": 0.05}. "
+                               "Brier-scored verbatim; direction/confidence are derived as the argmax and "
+                               "may be omitted. Preferred over direction+confidence when you hold a view "
+                               "on all three outcomes (legacy encoding splits 1-confidence evenly).",
+            },
             "reasoning": {"type": "string"},
             "summary": {"type": "string"},
             "revision": {"type": "boolean", "description": "Set true to revise an existing prediction", "default": False},
         },
-        "required": ["challenge_id", "direction", "confidence", "reasoning"],
+        "required": ["challenge_id", "reasoning"],
     },
 }
 
@@ -495,8 +506,9 @@ def _augment_paper_trade_signal(parsed):
 def handle_ha_predict(args: dict, **kw) -> str:
     return _run(
         ha.cmd_predict, _augment=_augment_paper_trade_signal,
-        challenge_id=args["challenge_id"], direction=args["direction"],
-        confidence=args["confidence"], reasoning=args["reasoning"],
+        challenge_id=args["challenge_id"], direction=args.get("direction"),
+        confidence=args.get("confidence"), probabilities=args.get("probabilities"),
+        reasoning=args["reasoning"],
         summary=args.get("summary"), revision=args.get("revision", False),
     )
 

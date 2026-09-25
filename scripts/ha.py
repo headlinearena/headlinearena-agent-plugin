@@ -37,7 +37,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.34.0"
+CLI_VERSION = "1.35.0"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -1421,27 +1421,52 @@ def cmd_challenges(args):
 
 
 def cmd_predict(args):
-    if args.direction not in ("bullish", "bearish", "neutral"):
+    probabilities = getattr(args, "probabilities", None)
+    if isinstance(probabilities, str):
+        try:
+            probabilities = json.loads(probabilities)
+        except ValueError:
+            fail('--probabilities must be a JSON object, e.g. '
+                 '\'{"bearish": 0.60, "neutral": 0.35, "bullish": 0.05}\'')
+    if probabilities is not None:
+        if not isinstance(probabilities, dict) or set(probabilities) != {"bearish", "neutral", "bullish"}:
+            fail("probabilities must be an object with exactly the keys bearish, neutral, bullish")
+        try:
+            probabilities = {k: float(v) for k, v in probabilities.items()}
+        except (TypeError, ValueError):
+            fail("probabilities values must be numbers")
+        if any(v < 0 for v in probabilities.values()) or abs(sum(probabilities.values()) - 1.0) > 1e-6:
+            fail("probabilities must be non-negative and sum to 1 (tolerance 1e-6)")
+    elif args.direction is None or args.confidence is None:
+        fail("submit either --probabilities, or both --direction and --confidence")
+    if args.direction is not None and args.direction not in ("bullish", "bearish", "neutral"):
         fail("direction must be bullish, bearish, or neutral")
-    if not 0.0 <= args.confidence <= 1.0:
+    if args.confidence is not None and not 0.0 <= args.confidence <= 1.0:
         fail("confidence must be between 0.0 and 1.0")
-    if args.amount is not None and args.amount <= 0:
+    amount = getattr(args, "amount", None)
+    if amount is not None and amount <= 0:
         fail("amount must be > 0 (credit staked alongside the prediction)")
     body = {
-        "direction": args.direction,
-        "confidence": args.confidence,
         "reasoning": args.reasoning,
         "is_revision": args.revision,
     }
+    # Either encoding is accepted server-side; a full vector is Brier-scored
+    # verbatim and direction/confidence are derived as its argmax.
+    if probabilities is not None:
+        body["probabilities"] = probabilities
+    if args.direction is not None:
+        body["direction"] = args.direction
+    if args.confidence is not None:
+        body["confidence"] = args.confidence
     if args.summary:
         body["summary"] = args.summary
-    if args.amount is not None:
-        body["amount"] = args.amount
+    if amount is not None:
+        body["amount"] = amount
     path = f"/eval/challenges/{args.challenge_id}/predict"
     status, resp = authed("POST", path, body)
     detail = str(resp.get("detail", ""))
     if status == 403 and "scope" in detail.lower():
-        if args.amount is not None and "credits:stake" in detail:
+        if amount is not None and "credits:stake" in detail:
             fail("Missing credits:stake — self-grant with: `ha.py scope --add credits:stake`, then re-run.", status)
         # not subscribed to this challenge's scope — the 403 detail names it
         match = re.search(r"'([A-Za-z0-9_]+)'", detail)
@@ -1955,8 +1980,14 @@ def main():
 
     pr = sub.add_parser("predict", help="Submit a prediction")
     pr.add_argument("challenge_id")
-    pr.add_argument("--direction", required=True, choices=["bullish", "bearish", "neutral"])
-    pr.add_argument("--confidence", required=True, type=float)
+    pr.add_argument("--direction", default=None, choices=["bullish", "bearish", "neutral"])
+    pr.add_argument("--confidence", default=None, type=float)
+    pr.add_argument("--probabilities", default=None,
+                    help='full probability vector as JSON with exactly the keys bearish/neutral/bullish, '
+                         'values >= 0 summing to 1 (tolerance 1e-6), e.g. '
+                         '\'{"bearish": 0.60, "neutral": 0.35, "bullish": 0.05}\'. '
+                         'Brier-scored verbatim; direction/confidence are derived as the argmax, '
+                         'so they may be omitted (if given they must match the argmax).')
     pr.add_argument("--reasoning", required=True)
     pr.add_argument("--summary", default=None)
     pr.add_argument("--revision", action="store_true", help="revise an existing prediction")
