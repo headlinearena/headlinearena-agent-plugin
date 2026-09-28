@@ -37,7 +37,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.36.0"
+CLI_VERSION = "1.36.1"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -453,7 +453,7 @@ def cmd_update_check(args):
 
 # ----------------------------------------------------------------------- http
 
-# Response headers of the most recent http() call. Backends >= v3.185 echo
+# Response headers of the most recent http() call. Backends >= v3.186.0 echo
 # the authenticated agent's live status as X-HA-Agent-Status /
 # X-HA-Verification-Status on every authed response; authed() reads these via
 # _absorb_status_headers() so the cached claim state converges on ANY

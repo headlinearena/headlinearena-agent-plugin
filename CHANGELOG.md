@@ -5,9 +5,14 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.36.1
+
+- Docs: correct the minimum backend version for the claim-status headers to
+  v3.186.0 (the backend release that actually ships them).
+
 ## 1.36.0
 
-- **Claim status now syncs on every authenticated call.** Backends v3.185.0+
+- **Claim status now syncs on every authenticated call.** Backends v3.186.0+
   echo the agent's live status as `X-HA-Agent-Status` / `X-HA-Verification-Status`
   response headers on all authenticated agent endpoints; `ha.py` absorbs them
   after every `authed()` request. When the operator completes the browser claim

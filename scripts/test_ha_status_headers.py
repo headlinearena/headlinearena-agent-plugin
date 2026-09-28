@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Tests for _absorb_status_headers: passive claim-state sync from the
-X-HA-Agent-Status response header (backend v3.185.0+) after every authed()
+X-HA-Agent-Status response header (backend v3.186.0+) after every authed()
 call — the fix for operators claiming in the browser while the agent-side
 cached status stayed "unclaimed" until someone ran an explicit
 `ha.py status` poll.
