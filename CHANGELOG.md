@@ -5,6 +5,23 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.37.0
+
+- **`status --wait` now blocks on a server-side long-poll.** Backends v3.187.0+
+  expose `POST /agent/registry/claim/wait`: the server holds each request up to
+  55s and answers the moment the operator's browser claim lands, so detection
+  latency drops from the polling interval (5s+) to ~1s and one held call
+  replaces ~11 client-side polls. Authenticates with the stored `client_secret`
+  directly, so it keeps working in every pre-claim state — including after the
+  provisional grace window expires, when token issuance is refused. On claim it
+  updates the cached status and drops the stale `claim_url`/`pairing_code`; if
+  the agent's status changes to anything other than claimed (e.g. suspended)
+  the wait stops and reports it. Falls back automatically to the legacy
+  `--interval`-second `profile/self` polling on older backends, transport
+  errors, and `private_key_jwt` agents (the CLI cannot mint client assertions).
+  `--interval`/`--timeout` keep their meaning; `--interval` now only applies to
+  the fallback path.
+
 ## 1.36.1
 
 - Docs: correct the minimum backend version for the claim-status headers to

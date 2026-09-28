@@ -37,7 +37,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.36.1"
+CLI_VERSION = "1.37.0"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -463,7 +463,7 @@ def cmd_update_check(args):
 _last_response_headers = None
 
 
-def http(method, url, body=None, token=None, agent_id=None):
+def http(method, url, body=None, token=None, agent_id=None, timeout=30):
     global _last_response_headers
     headers = {
         "Content-Type": "application/json",
@@ -477,7 +477,7 @@ def http(method, url, body=None, token=None, agent_id=None):
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             _last_response_headers = resp.headers
             raw = resp.read().decode() or "{}"
             try:
@@ -834,6 +834,68 @@ def _sync_claim_status(entry, light=False):
         return entry
 
 
+_CLAIM_WAIT_HOLD_SECONDS = 55  # server-side cap of /agent/registry/claim/wait
+
+
+def _wait_for_claim(entry, deadline, interval):
+    """Block until the agent is claimed or `deadline` passes.
+
+    Prefers the backend long-poll (POST /agent/registry/claim/wait,
+    v3.187.0+): the server holds each request up to 55s and answers the
+    moment the operator's browser claim lands, so detection latency is ~1s
+    and one call replaces ~11 client-side polls. Authenticates with the
+    stored client_secret directly (no bearer token needed — works even after
+    the provisional grace window expires). Falls back to the legacy
+    profile/self polling loop (`interval`s cadence) on older backends,
+    private_key_jwt agents (the CLI can't mint client assertions), auth
+    rejections, or transport errors."""
+    use_longpoll = bool(entry.get("client_secret"))
+    start = time.time()
+    attempt = 0
+    while entry.get("status") != "active" and time.time() < deadline:
+        attempt += 1
+        if use_longpoll:
+            hold = int(max(1, min(_CLAIM_WAIT_HOLD_SECONDS, deadline - time.time())))
+            try:
+                s, r = http("POST", api("/agent/registry/claim/wait"), {
+                    "agent_id": entry["agent_id"],
+                    "client_secret": entry["client_secret"],
+                    "timeout_seconds": hold,
+                }, timeout=hold + 15)
+            except HAFailure:
+                s, r = 0, {}  # network error — drop to legacy polling below
+            if s == 200:
+                live = r.get("agent_status")
+                if r.get("claimed"):
+                    update_creds(status="active", challenge=None,
+                                 claim_url=None, pairing_code=None)
+                    return creds()
+                if live and live != entry.get("status"):
+                    update_creds(status=live)
+                    entry = creds()
+                    if live not in ("pending", "active_provisional"):
+                        note(f"Agent status changed to '{live}' while waiting — stopping the wait.")
+                        return entry
+                note(f"Still '{entry.get('status')}' — server held the check for "
+                     f"{int(r.get('waited_seconds', hold))}s with no claim "
+                     f"(attempt {attempt}, {int(time.time() - start)}s elapsed).")
+                continue
+            if s == 429:
+                pause = min(20, max(0, deadline - time.time()))
+                note(f"claim/wait rate-limited — backing off {int(pause)}s.")
+                time.sleep(pause)
+                continue
+            use_longpoll = False
+            note(f"claim/wait long-poll unavailable (HTTP {s or 'network error'}; "
+                 f"backend pre-v3.187.0?) — falling back to {interval}s polling.")
+            continue
+        note(f"Still '{entry.get('status')}' — waiting for operator to claim "
+             f"(attempt {attempt}, {int(time.time() - start)}s elapsed; polling every {interval}s).")
+        time.sleep(min(interval, max(0, deadline - time.time())))
+        entry = _sync_claim_status(entry, light=True)
+    return entry
+
+
 def cmd_status(args):
     entry = creds()
     if not entry:
@@ -845,16 +907,11 @@ def cmd_status(args):
         timeout = args.timeout if args.timeout is not None else 600
         deadline = time.time() + timeout
         start = time.time()
-        attempt = 0
         if entry.get("status") != "active":
             claim_hint = f" claim_url: {entry['claim_url']}" if entry.get("claim_url") else ""
-            note(f"Polling for claim — checking every {interval}s, up to {timeout}s total.{claim_hint}")
-        while entry.get("status") != "active" and time.time() < deadline:
-            attempt += 1
-            note(f"Still '{entry.get('status')}' — waiting for operator to claim "
-                 f"(attempt {attempt}, {int(time.time() - start)}s elapsed; polling every {interval}s).")
-            time.sleep(interval)
-            entry = _sync_claim_status(entry, light=True)
+            note(f"Waiting for claim — long-poll preferred (server answers the moment "
+                 f"the claim lands), up to {timeout}s total.{claim_hint}")
+            entry = _wait_for_claim(entry, deadline, interval)
         if entry.get("status") == "active":
             note(f"Agent claimed and active — detected after {int(time.time() - start)}s.")
         else:
@@ -1965,8 +2022,8 @@ def main():
 
     st = sub.add_parser("status", help="Show live claim state, credits, token validity, and subscribed scopes")
     st.add_argument("--wait", action="store_true",
-                    help="poll until the agent is claimed (operator opens claim_url + enters pairing code); exits the moment claim is detected")
-    st.add_argument("--interval", type=int, default=None, help="polling interval in seconds for --wait (default 5, min 3)")
+                    help="block until the agent is claimed (server-side long-poll on v3.187.0+ backends, ~1s detection; legacy polling otherwise); exits the moment claim is detected")
+    st.add_argument("--interval", type=int, default=None, help="fallback polling interval in seconds for --wait on backends without the claim/wait long-poll (default 5, min 3)")
     st.add_argument("--timeout", type=int, default=None, help="max seconds to wait in --wait (default 600)")
     st.set_defaults(func=cmd_status)
     sub.add_parser("credits", help="Show your credit balance (needs credits:read scope)").set_defaults(func=cmd_credits)
