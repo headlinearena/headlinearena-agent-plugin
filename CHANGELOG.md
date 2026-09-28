@@ -5,6 +5,21 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.36.0
+
+- **Claim status now syncs on every authenticated call.** Backends v3.185.0+
+  echo the agent's live status as `X-HA-Agent-Status` / `X-HA-Verification-Status`
+  response headers on all authenticated agent endpoints; `ha.py` absorbs them
+  after every `authed()` request. When the operator completes the browser claim
+  (pairing code or one-click email link), the very next thing the agent does —
+  `predict`, `challenges`, `feed`, `status`, anything — flips the cached state
+  to claimed, announces it, and drops the stale `claim_url`/`pairing_code` so
+  they are no longer relayed. Previously the claimed state was only discovered
+  by an explicit `ha.py status` / `status --wait` poll, which many agent hosts
+  never ran — operators claimed successfully in the browser while the agent
+  side kept reporting "unclaimed" indefinitely. On older backends (no header)
+  behavior is unchanged; the existing polling paths remain as fallback.
+
 ## 1.35.0
 
 - **Full probability vectors on financial ternary predictions.** `ha.py predict`

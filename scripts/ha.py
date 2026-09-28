@@ -37,7 +37,7 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.35.0"
+CLI_VERSION = "1.36.0"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -453,7 +453,18 @@ def cmd_update_check(args):
 
 # ----------------------------------------------------------------------- http
 
+# Response headers of the most recent http() call. Backends >= v3.185 echo
+# the authenticated agent's live status as X-HA-Agent-Status /
+# X-HA-Verification-Status on every authed response; authed() reads these via
+# _absorb_status_headers() so the cached claim state converges on ANY
+# authenticated call — the operator's browser claim no longer goes unnoticed
+# until someone happens to run `ha.py status`. An email.message.Message
+# (case-insensitive .get), or None before the first call.
+_last_response_headers = None
+
+
 def http(method, url, body=None, token=None, agent_id=None):
+    global _last_response_headers
     headers = {
         "Content-Type": "application/json",
         **_version_headers(),
@@ -467,12 +478,14 @@ def http(method, url, body=None, token=None, agent_id=None):
     req = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req, timeout=30) as resp:
+            _last_response_headers = resp.headers
             raw = resp.read().decode() or "{}"
             try:
                 return resp.status, json.loads(raw)
             except json.JSONDecodeError:
                 return resp.status, {"raw": raw}
     except urllib.error.HTTPError as e:
+        _last_response_headers = e.headers
         raw = e.read().decode() or "{}"
         try:
             return e.code, json.loads(raw)
@@ -525,12 +538,39 @@ def get_token(force=False):
     return resp["access_token"]
 
 
+def _absorb_status_headers():
+    """Sync the cached agent status from the last response's X-HA-Agent-Status
+    header (absent on older backends and on failed auth — both no-ops). This
+    is the passive complement to _sync_claim_status: it costs zero extra
+    requests, so a browser claim by the operator is picked up by the very next
+    authenticated call this agent makes — predict, challenges, feed, anything —
+    instead of waiting for an explicit `ha.py status` that in practice many
+    agent hosts never run."""
+    if _last_response_headers is None:
+        return
+    live = _last_response_headers.get("X-HA-Agent-Status")
+    if not live:
+        return
+    entry = creds()
+    if not entry or entry.get("status") == live:
+        return
+    if live == "active":
+        # Claimed: also drop the now-dead claim artifacts so status/register
+        # output stops relaying a stale claim_url + pairing_code.
+        update_creds(status="active", challenge=None, claim_url=None, pairing_code=None)
+        note("Your operator has claimed this agent — it is now fully active "
+             "(status synced automatically from the server).")
+    else:
+        update_creds(status=live)
+
+
 def authed(method, path, body=None):
     """Authenticated request with one automatic re-auth on 401."""
     entry = creds(required=True)
     status, resp = http(method, api(path), body, get_token(), entry["agent_id"])
     if status == 401:
         status, resp = http(method, api(path), body, get_token(force=True), entry["agent_id"])
+    _absorb_status_headers()
     return status, resp
 
 
