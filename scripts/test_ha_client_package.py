@@ -24,7 +24,7 @@ from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import ha  # noqa: E402
-from ha_client import auth, contracts, errors, prediction, transport  # noqa: E402
+from ha_client import auth, contracts, errors, legacy, prediction, transport  # noqa: E402
 
 
 class AliasIdentityTest(unittest.TestCase):
@@ -559,6 +559,86 @@ class AuthHelpersTest(unittest.TestCase):
 
     def test_token_failure_message(self):
         self.assertEqual(auth.token_failure_message("boom"), "Token request failed: boom")
+
+
+class LegacyCompatTest(unittest.TestCase):
+    def test_cn_endpoint_detection(self):
+        for url in (
+            "https://headlinearena.cn",
+            "https://api.headlinearena.cn/",
+            "https://headlinearena.com/api/v1/cn/agent/register",
+            "https://x.example/cn",           # trailing /cn without a slash
+            "http://localhost:8000/cn/foo",
+        ):
+            self.assertTrue(legacy.is_cn_endpoint(url), url)
+        for url in (
+            "https://headlinearena.com",
+            "https://headlinearena.com/api/v1",
+            "https://xcn.example.com",        # .cn must be a host suffix, not substring
+            "",
+            None,
+        ):
+            self.assertFalse(legacy.is_cn_endpoint(url), repr(url))
+
+    def test_missing_scope_predicate(self):
+        self.assertTrue(legacy.is_missing_scope(403, {"detail": "Missing Scope: credits:stake"}))
+        self.assertTrue(legacy.is_missing_scope(403, {"detail": "missing scope GC"}))
+        self.assertFalse(legacy.is_missing_scope(403, {"detail": "not activated"}))
+        self.assertFalse(legacy.is_missing_scope(400, {"detail": "missing scope"}))
+        self.assertFalse(legacy.is_missing_scope(403, {}))
+
+    def test_non_numeric_shape_error_predicate(self):
+        self.assertTrue(legacy.is_non_numeric_shape_error(
+            {"detail": "Binary forecast requires exactly yes_probability"}))
+        self.assertTrue(legacy.is_non_numeric_shape_error(
+            {"detail": "probabilities must sum to 1"}))
+        self.assertFalse(legacy.is_non_numeric_shape_error(
+            {"detail": "predicted_std must be positive"}))
+
+    def test_missing_scope_message_is_verbatim_for_both_commands(self):
+        self.assertEqual(
+            legacy.missing_scope_message("macro-predict"),
+            "Missing a required scope — macro-predict needs credits:stake, which is NOT granted "
+            "by default. Self-grant with: `ha.py scope --add credits:stake`, then re-run.",
+        )
+        self.assertEqual(
+            legacy.missing_scope_message("forecast"),
+            "Missing a required scope — forecast needs credits:stake, which is NOT granted "
+            "by default. Self-grant with: `ha.py scope --add credits:stake`, then re-run.",
+        )
+
+    def test_non_numeric_shape_message_is_verbatim(self):
+        self.assertEqual(
+            legacy.NON_NUMERIC_SHAPE_MESSAGE,
+            "This challenge is not numeric — macro-predict only supports "
+            "outcome_shape=numeric_distribution (mean/std). Use "
+            "`ha.py forecast <id> ...` instead (run `ha.py challenges --track civic` "
+            "to see the exact flags for this challenge_id).",
+        )
+
+    def test_quoted_scope_key(self):
+        self.assertEqual(legacy.quoted_scope_key("Not subscribed to 'GC'"), "GC")
+        self.assertEqual(legacy.quoted_scope_key("no quoted 'tokens_2' here"), "tokens_2")
+        self.assertIsNone(legacy.quoted_scope_key("no quotes at all"))
+
+    def test_macro_civic_fallback_uuid5_is_pinned(self):
+        # The legacy 404-fallback derivation (value:std:amount) is distinct
+        # from build_civic_forecast_body's (json forecast) — both are pinned
+        # separately so neither can drift into the other.
+        body = legacy.build_macro_civic_fallback_body("c1", 3.4, 0.15, 10)
+        self.assertEqual(body["idempotency_key"], "57545182ca4752ba9c490adaaa7b3164")
+        self.assertEqual(body["forecast"], {"mean": 3.4, "std": 0.15})
+        self.assertEqual(body["amount"], 10)
+        self.assertNotIn("rationale", body)
+        with_rationale = legacy.build_macro_civic_fallback_body("ch-9", 2.0, 0.5, 25, "why")
+        self.assertEqual(with_rationale["idempotency_key"], "67c725a696ff56acb43158b45ff012c5")
+        self.assertEqual(with_rationale["rationale"], "why")
+
+    def test_fallback_key_differs_from_canonical_derivation(self):
+        canonical = prediction.build_civic_forecast_body(
+            "c1", {"mean": 3.4, "std": 0.15}, 10)["idempotency_key"]
+        fallback = legacy.build_macro_civic_fallback_body("c1", 3.4, 0.15, 10)["idempotency_key"]
+        self.assertNotEqual(canonical, fallback)
 
 
 if __name__ == "__main__":

@@ -13,6 +13,8 @@ Layout:
   contracts.py   prediction-contract-v2 parsing + Civic/legacy projections
   transport.py   HTTP primitives (urllib core, headers, origin, expect)
   auth.py        token freshness / request-response helpers, claim messages
+  legacy.py      deprecated-macro compat routing (predicates, messages,
+                 CN-endpoint guard, 404-fallback body)
 
 The orchestrators (http/authed/get_token, the credential store) deliberately
 stay in ha.py: tests and the Hermes adapter intercept them by patching ha's

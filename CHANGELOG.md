@@ -5,6 +5,29 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.37.5
+
+- Internal refactor, no user-visible change: the legacy/deprecated-macro
+  compatibility routing extracted from `scripts/ha.py` into
+  `scripts/ha_client/legacy.py` — Phase 2 Step 4 (final step) of the WorkBuddy
+  baseline (`docs/plans/workbuddy-connector-v3.md` §27–28). Holds the pure
+  predicates and message builders the legacy paths had inline (the CN-endpoint
+  guard, the 403-scope and non-numeric-shape error classifiers, the
+  byte-identical missing-scope and "not numeric" redirect texts, the
+  quoted-scope-key extractor) plus `build_macro_civic_fallback_body` — the
+  Human-Forecast retry body `macro-predict` uses on a legacy-route 404, whose
+  historical `value:std:amount` uuid5 idempotency derivation is deliberately
+  distinct from `build_civic_forecast_body`'s canonical
+  forecast-JSON form (the server dedups on the exact string, so the two must
+  never be unified; both derivations are pinned by hardcoded-digest tests).
+  Command entry points stay in ha.py (tests patch `ha.authed`/`ha.http` there);
+  everything is re-imported under its historical names so
+  `mock.patch.object(ha, ...)` and the Hermes adapter resolve the same objects.
+  With this, Phase 2 §28 Steps 1–4 are fully landed (errors/prediction →
+  contracts → transport/auth → legacy). 162 tests pass (8 new in
+  `scripts/test_ha_client_package.py`); live alias smoke (`macro-challenges`)
+  verified against production.
+
 ## 1.37.4
 
 - Internal refactor, no user-visible change: HTTP transport and auth helpers

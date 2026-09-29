@@ -61,8 +61,17 @@ from ha_client.prediction import (
     reject_client_bin as _reject_client_bin,
     validate_ternary_vector,
 )
+from ha_client.legacy import (
+    NON_NUMERIC_SHAPE_MESSAGE,
+    build_macro_civic_fallback_body,
+    is_cn_endpoint,
+    is_missing_scope,
+    is_non_numeric_shape_error,
+    missing_scope_message,
+    quoted_scope_key,
+)
 
-CLI_VERSION = "1.37.4"
+CLI_VERSION = "1.37.5"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -567,15 +576,10 @@ def out(resp):
 # ------------------------------------------------------------------- commands
 
 def _is_cn_endpoint():
-    """True if the effective base URL points at the CN regional deployment — a
-    host ending in .cn (e.g. headlinearena.cn) or a /cn/ path segment in the
-    base (the old /api/v1/cn/... form). The CN region is discontinued;
-    cmd_register refuses it so an agent never silently lands on a dead
-    deployment."""
-    o = origin().lower()
-    host = o.split("://", 1)[-1].split("/", 1)[0]
-    norm = o if o.endswith("/") else o + "/"  # catch a trailing /cn (no slash)
-    return host.endswith(".cn") or "/cn/" in norm
+    # is_cn_endpoint (ha_client/legacy.py) detects the discontinued CN
+    # regional deployment from the base URL; cmd_register refuses it so an
+    # agent never silently lands on a dead deployment.
+    return is_cn_endpoint(origin())
 
 
 def cmd_register(args):
@@ -1411,13 +1415,12 @@ def cmd_predict(args):
     path = f"/eval/challenges/{args.challenge_id}/predict"
     status, resp = authed("POST", path, body)
     detail = str(resp.get("detail", ""))
-    if status == 403 and "scope" in detail.lower():
+    if is_missing_scope(status, resp):
         if amount is not None and "credits:stake" in detail:
             fail("Missing credits:stake — self-grant with: `ha.py scope --add credits:stake`, then re-run.", status)
         # not subscribed to this challenge's scope — the 403 detail names it
-        match = re.search(r"'([A-Za-z0-9_]+)'", detail)
-        if match:
-            scope_key = match.group(1)
+        scope_key = quoted_scope_key(detail)
+        if scope_key:
             note(f"Not subscribed to scope {scope_key}; subscribing and retrying.")
             authed("POST", f"/agent/prediction-scope/{scope_key}")
             status, resp = authed("POST", path, body)
@@ -1475,32 +1478,17 @@ def cmd_macro_predict(args):
     body = _macro_predict_body(args)
     status, resp = authed("POST", f"/eval/macro/challenges/{args.challenge_id}/predict", body)
     if status == 404:
-        civic_body = {
-            "forecast": {"mean": args.predicted_value, "std": args.predicted_std},
-            "amount": args.amount,
-            "idempotency_key": uuid.uuid5(
-                uuid.NAMESPACE_URL,
-                f"{args.challenge_id}:{args.predicted_value}:{args.predicted_std}:{args.amount}",
-            ).hex,
-        }
-        if args.rationale:
-            civic_body["rationale"] = args.rationale
         status, resp = authed(
-            "POST", f"/eval/human-forecasts/challenges/{args.challenge_id}/forecast", civic_body
+            "POST", f"/eval/human-forecasts/challenges/{args.challenge_id}/forecast",
+            build_macro_civic_fallback_body(
+                args.challenge_id, args.predicted_value, args.predicted_std,
+                args.amount, args.rationale,
+            ),
         )
-    if status == 403 and "scope" in str(resp.get("detail", "")).lower():
-        fail("Missing a required scope — macro-predict needs credits:stake, which is NOT granted "
-             "by default. Self-grant with: `ha.py scope --add credits:stake`, then re-run.", status)
-    if status == 400:
-        detail = str(resp.get("detail", "")).lower()
-        if "yes_probability" in detail or "probabilities" in detail:
-            fail(
-                "This challenge is not numeric — macro-predict only supports "
-                "outcome_shape=numeric_distribution (mean/std). Use "
-                "`ha.py forecast <id> ...` instead (run `ha.py challenges --track civic` "
-                "to see the exact flags for this challenge_id).",
-                status,
-            )
+    if is_missing_scope(status, resp):
+        fail(missing_scope_message("macro-predict"), status)
+    if status == 400 and is_non_numeric_shape_error(resp):
+        fail(NON_NUMERIC_SHAPE_MESSAGE, status)
     expect(status, resp)
     out(resp)
 
@@ -1593,9 +1581,8 @@ def cmd_forecast(args):
     status, resp = authed(
         "POST", f"/eval/human-forecasts/challenges/{args.challenge_id}/forecast", body
     )
-    if status == 403 and "scope" in str(resp.get("detail", "")).lower():
-        fail("Missing a required scope — forecast needs credits:stake, which is NOT granted "
-             "by default. Self-grant with: `ha.py scope --add credits:stake`, then re-run.", status)
+    if is_missing_scope(status, resp):
+        fail(missing_scope_message("forecast"), status)
     expect(status, resp)
     out(resp)
 
