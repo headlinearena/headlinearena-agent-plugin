@@ -5,6 +5,43 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.38.0
+
+WorkBuddy Connector v3.0 baseline — Phase 5+6 delivery (plan §48–63).
+
+- New `workbuddy/` publishing package for the WorkBuddy platform:
+  `connector-meta.json` (metadata, scopes, 12-tool index, bilingual
+  descriptions), `mcp.json` (Remote MCP endpoint, §51 verbatim), `icon.svg`,
+  three WorkBuddy-platform skills (`ha-forecasting` §49 main loop,
+  `ha-research`, `ha-performance`), and en+zh worked examples. Conventions:
+  no `auth_mode`/`token-schema.json` (the MCP server ships its own OAuth
+  2.1 AS; WorkBuddy uses the standard MCP OAuth flow), connector URN
+  `connector:headlinearena`, callback
+  `workbuddy://workbuddy/mcp/connector%3Aheadlinearena/oauth/callback`.
+  The connector package carries its own version (1.0.0), independent of
+  the plugin lockstep. Platform upload is a human step — checklist in
+  `workbuddy/README.md`.
+- Docs (§52): new `docs/mcp-integration.md` (endpoint, OAuth discovery
+  chain, 12-tool scope table), `docs/workbuddy.md`,
+  `docs/migration-v1-to-unified-predict.md` (§53 mapping;
+  `ha_macro_odds` stays legacy-without-successor), and
+  `docs/troubleshooting.md` (§47 error-code playbook + MCP transport
+  symptoms). The four contract docs (challenge-contract, prediction-api,
+  oauth, stake-policy) flipped from "Phase 0 contract lock" to as-built
+  **Implemented** status; `challenge-contract.md` §4.2 `min_samples`
+  corrected 4→10 to match the implementation floor
+  (`SAMPLES_MIN_COUNT=10`); README Links indexes everything.
+- Backend (companion branch `feat/unified-prediction-core`, not yet
+  deployed): MCP server lifecycle made holder-task safe, §4 shape naming
+  finalized (`financial_ternary` vs `ordered_categorical`), and the §61–63
+  acceptance suites — 21-test MCP P0 suite plus a 5-test OAuth⇄MCP
+  E2E/security suite (refresh continuity, revocation kills the session,
+  WorkBuddy capstone DCR→consent→predict→read-back with the real executor,
+  wrong-aud JWT rejected, cross-agent isolation). Compat suites repaired
+  against main-side drift (taxonomy sensitivity domain; convergence-bridge
+  fixture made self-sufficient; RBAC patch name; upsert test pinned to its
+  own disposable engine so it can never touch the shared dev DB).
+
 ## 1.37.6
 
 - Docs: Phase 2 "update" tail of the WorkBuddy baseline (§58) — with the
