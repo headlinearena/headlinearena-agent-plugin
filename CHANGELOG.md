@@ -5,6 +5,23 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.37.1
+
+- Docs: adopt the WorkBuddy Connector v3.0 development baseline
+  (`docs/plans/workbuddy-connector-v3.md`, supersedes v2) and freeze the
+  Phase 0 contract-lock deliverables: `docs/challenge-contract.md` (unified
+  challenge + resolution contract), `docs/prediction-api.md` (unified
+  `ha_predict` + `ha_predictions`, revision recovery, idempotency, error
+  contract), `docs/stake-policy.md` (server-enforced per-prediction stake
+  caps, distinct from wallet top-up policy), and `docs/oauth.md` (OAuth 2.1
+  + PKCE + hardened DCR for Remote MCP).
+- Tooling: new `scripts/check_version_sync.py` verifies that `CLI_VERSION`,
+  `ha.py --version`, all nine `skills/*/SKILL.md` frontmatter versions,
+  `.claude-plugin/marketplace.json`, `.codex-plugin/plugin.json`,
+  `plugin.yaml`, and — when HEAD carries an exact tag — the git tag all
+  agree; wired into CI as a required check. No behavior change to any skill
+  or CLI command.
+
 ## 1.37.0
 
 - **`status --wait` now blocks on a server-side long-poll.** Backends v3.187.0+

@@ -30,3 +30,16 @@ jobs:
             python3 "$f" -v
             echo "::endgroup::"
           done
+
+  check-version-sync:
+    name: Version sync (skills / marketplace / codex / hermes / CLI / tag)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # full history so the exact HEAD tag (if any) is visible — the
+          # check also verifies tag == CLI_VERSION per CLAUDE.md
+          fetch-depth: 0
+
+      - name: Verify every version location agrees
+        run: python3 scripts/check_version_sync.py
