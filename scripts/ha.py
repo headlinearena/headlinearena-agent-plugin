@@ -26,7 +26,6 @@ Environment:
 
 import argparse
 import json
-import math
 import os
 import re
 import sys
@@ -37,7 +36,23 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-CLI_VERSION = "1.37.1"
+# Phase 2 (docs/plans/workbuddy-connector-v3.md §27–28): shared internals live
+# in the ha_client package next to this file. Everything is re-bound to its
+# historical name in this module's namespace so existing callers, tests
+# (mock.patch.object(ha, ...)), and the Hermes adapter keep resolving.
+from ha_client.errors import HAFailure, fail, note
+from ha_client.prediction import (
+    build_civic_forecast_body,
+    build_forecast_payload as _build_forecast_payload,
+    build_legacy_macro_body,
+    macro_predict_body as _macro_predict_body,
+    parse_probabilities_arg,
+    parse_samples as _parse_samples,
+    reject_client_bin as _reject_client_bin,
+    validate_ternary_vector,
+)
+
+CLI_VERSION = "1.37.2"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -64,30 +79,8 @@ ALL_SCOPES = [
 ]
 
 
-class HAFailure(Exception):
-    """Raised by fail() instead of exiting the process directly, so library
-    consumers (e.g. the Hermes plugin adapter) can catch it instead of losing
-    their whole host process to sys.exit. The CLI entry point (main()) is the
-    only place that still turns this into the historical print+exit(1)."""
-
-    def __init__(self, detail, status=None):
-        super().__init__(str(detail))
-        self.detail = detail
-        self.status = status
-
-
-def fail(detail, status=None):
-    raise HAFailure(detail, status)
-
-
-def note(msg):
-    # flush=True matters here: when ha.py runs through a subprocess/tool pipe
-    # (the normal way a coding agent invokes it) rather than an interactive
-    # tty, Python block-buffers stderr — without an explicit flush, --wait's
-    # per-poll "still waiting" messages would all sit in the buffer and only
-    # appear at once when the process exits, making the live polling status
-    # invisible to whoever is watching in real time.
-    print(f"→ {msg}", file=sys.stderr, flush=True)
+# HAFailure / fail / note moved to ha_client/errors.py (Phase 2 Step 1) and
+# imported above under their original names.
 
 
 def origin():
@@ -1518,22 +1511,9 @@ def cmd_challenges(args):
 
 
 def cmd_predict(args):
-    probabilities = getattr(args, "probabilities", None)
-    if isinstance(probabilities, str):
-        try:
-            probabilities = json.loads(probabilities)
-        except ValueError:
-            fail('--probabilities must be a JSON object, e.g. '
-                 '\'{"bearish": 0.60, "neutral": 0.35, "bullish": 0.05}\'')
+    probabilities = parse_probabilities_arg(getattr(args, "probabilities", None))
     if probabilities is not None:
-        if not isinstance(probabilities, dict) or set(probabilities) != {"bearish", "neutral", "bullish"}:
-            fail("probabilities must be an object with exactly the keys bearish, neutral, bullish")
-        try:
-            probabilities = {k: float(v) for k, v in probabilities.items()}
-        except (TypeError, ValueError):
-            fail("probabilities values must be numbers")
-        if any(v < 0 for v in probabilities.values()) or abs(sum(probabilities.values()) - 1.0) > 1e-6:
-            fail("probabilities must be non-negative and sum to 1 (tolerance 1e-6)")
+        probabilities = validate_ternary_vector(probabilities)
     elif args.direction is None or args.confidence is None:
         fail("submit either --probabilities, or both --direction and --confidence")
     if args.direction is not None and args.direction not in ("bullish", "bearish", "neutral"):
@@ -1609,11 +1589,6 @@ def cmd_macro_challenges(args):
     ))
 
 
-def _macro_predict_body(args):
-    return {"predicted_value": args.predicted_value, "predicted_std": args.predicted_std,
-            "amount": args.amount, **({"rationale": args.rationale} if args.rationale else {})}
-
-
 def cmd_macro_predict(args):
     """Deprecated numeric-only alias for ``forecast``.
 
@@ -1661,111 +1636,9 @@ def cmd_macro_predict(args):
     out(resp)
 
 
-def _reject_client_bin(args):
-    if getattr(args, "bin", None) is not None or getattr(args, "bin_label", None) is not None:
-        fail(
-            "The server maps your forecast statistic to exactly one frozen bin itself — "
-            "clients cannot choose or split bins. Pass --mean/--std (or --samples), --yes-probability, "
-            "or --probability instead of --bin/--bin-label."
-        )
-
-
-def _parse_samples(raw):
-    """Parse --samples: comma-separated numbers inline, or @path to a file
-    containing a JSON array or newline/comma-separated numbers."""
-    text = raw.strip()
-    if text.startswith("@"):
-        path = text[1:]
-        try:
-            with open(path, "r", encoding="utf-8") as fh:
-                text = fh.read().strip()
-        except OSError as exc:
-            fail(f"--samples file {path!r} could not be read: {exc}")
-    if text.startswith("["):
-        try:
-            values = json.loads(text)
-        except ValueError:
-            fail("--samples JSON array could not be parsed")
-        if not isinstance(values, list):
-            fail("--samples JSON must be an array of numbers")
-    else:
-        values = [tok for tok in re.split(r"[,\s]+", text) if tok]
-    parsed = []
-    for item in values:
-        try:
-            parsed.append(float(item))
-        except (TypeError, ValueError):
-            fail(f"--samples entries must be numbers, got {item!r}")
-    if not all(math.isfinite(v) for v in parsed):
-        fail("--samples entries must all be finite")
-    if not 10 <= len(parsed) <= 1000:
-        fail(f"--samples needs between 10 and 1000 values, got {len(parsed)}")
-    return parsed
-
-
-def _build_forecast_payload(shape, args, challenge):
-    schema = challenge.get("forecast_schema")
-    if shape == "numeric_distribution":
-        if getattr(args, "samples", None) is not None:
-            if args.mean is not None or args.std is not None:
-                fail("Pass either --samples or --mean/--std, not both")
-            return {"samples": _parse_samples(args.samples)}
-        if args.mean is None or args.std is None:
-            fail(
-                f"This challenge is numeric_distribution — pass --mean and --std, "
-                f"or --samples with your raw predictive samples (schema: {schema})"
-            )
-        if not math.isfinite(args.mean) or not math.isfinite(args.std):
-            fail("--mean and --std must be finite numbers")
-        if args.std <= 0:
-            fail("--std must be > 0")
-        return {"mean": args.mean, "std": args.std}
-    if shape == "binary_probability":
-        if args.yes_probability is None:
-            fail(f"This challenge is binary_probability — pass --yes-probability (schema: {schema})")
-        if not math.isfinite(args.yes_probability) or not 0.0 <= args.yes_probability <= 1.0:
-            fail("--yes-probability must be between 0 and 1")
-        return {"yes_probability": args.yes_probability}
-    if shape == "ordered_categorical_distribution":
-        categories = [
-            item.get("key")
-            for item in ((schema or {}).get("categories") or [])
-            if isinstance(item, dict) and item.get("key")
-        ]
-        if not categories:
-            categories = [b["category"] for b in (challenge.get("bins") or []) if "category" in b]
-        if not args.probability:
-            fail(
-                f"This challenge is ordered_categorical_distribution — pass --probability "
-                f"CAT=VALUE once per category {categories} (schema: {schema})"
-            )
-        probs = {}
-        for item in args.probability:
-            if "=" not in item:
-                fail(f"--probability must be CATEGORY=VALUE, got {item!r}")
-            cat, _, val = item.partition("=")
-            cat = cat.strip()
-            if not cat or cat in probs:
-                fail(f"--probability categories must be non-empty and unique, got {cat!r}")
-            try:
-                probs[cat] = float(val)
-            except ValueError:
-                fail(f"--probability value must be a number, got {item!r}")
-            if not math.isfinite(probs[cat]) or not 0.0 <= probs[cat] <= 1.0:
-                fail(f"--probability values must be finite numbers between 0 and 1, got {item!r}")
-        if categories and set(probs) != set(categories):
-            fail(f"--probability categories {sorted(probs)} do not match the frozen set {categories}")
-        tolerance = float((schema or {}).get("tolerance", 0.000001))
-        if not math.isclose(sum(probs.values()), 1.0, rel_tol=0.0, abs_tol=tolerance):
-            fail(
-                f"--probability values must sum to 1 within tolerance {tolerance}; "
-                f"got {sum(probs.values())}"
-            )
-        return {"probabilities": probs}
-    fail(
-        f"Unrecognized outcome_shape {shape!r} for this challenge — this plugin version may be "
-        f"older than the backend's contract. Run `ha.py update-check`."
-    )
+# _build_forecast_payload / _reject_client_bin / _parse_samples moved to
+# ha_client/prediction.py (Phase 2 Step 1) and imported above under their
+# original names.
 
 
 def cmd_forecast(args):
@@ -1832,13 +1705,7 @@ def cmd_forecast(args):
                 "collapse to --mean/--std for this challenge, or use a canonical "
                 "Civic Index round (ha.py challenges --track civic)"
             )
-        legacy_body = {
-            "predicted_value": forecast["mean"],
-            "predicted_std": forecast["std"],
-            "amount": args.amount,
-        }
-        if args.rationale:
-            legacy_body["rationale"] = args.rationale
+        legacy_body = build_legacy_macro_body(forecast, args.amount, args.rationale)
         status, resp = authed(
             "POST", f"/eval/macro/challenges/{args.challenge_id}/predict", legacy_body
         )
@@ -1846,18 +1713,14 @@ def cmd_forecast(args):
         out(resp)
         return
 
-    body = {
-        "forecast": forecast,
-        "amount": args.amount,
-        "idempotency_key": args.idempotency_key or uuid.uuid5(
-            uuid.NAMESPACE_URL,
-            f"{args.challenge_id}:{json.dumps(forecast, sort_keys=True)}:{args.amount}",
-        ).hex,
-    }
-    if args.rationale:
-        body["rationale"] = args.rationale
-    if args.expected_revision is not None:
-        body["expected_revision"] = args.expected_revision
+    body = build_civic_forecast_body(
+        args.challenge_id,
+        forecast,
+        args.amount,
+        idempotency_key=args.idempotency_key,
+        rationale=args.rationale,
+        expected_revision=args.expected_revision,
+    )
     status, resp = authed(
         "POST", f"/eval/human-forecasts/challenges/{args.challenge_id}/forecast", body
     )

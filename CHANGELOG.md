@@ -5,6 +5,23 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.37.2
+
+- Internal refactor, no user-visible change: prediction validation and payload
+  construction extracted from `scripts/ha.py` into the new `scripts/ha_client/`
+  package (`errors.py`: HAFailure/fail/note; `prediction.py`: sample parsing,
+  per-shape forecast payload building, ternary `--probabilities` validation,
+  legacy/civic body builders with the unchanged uuid5 idempotency-key
+  derivation) — Phase 2 Step 1 of the WorkBuddy baseline
+  (`docs/plans/workbuddy-connector-v3.md` §27–28). `ha.py` re-imports
+  everything under its historical names (`ha._build_forecast_payload`,
+  `ha.fail`, `ha.HAFailure`, …), so every existing caller, test
+  (`mock.patch.object(ha, ...)`), and the Hermes adapter (`except
+  ha.HAFailure`) resolve the exact same objects as before. Error messages are
+  byte-identical; all 125 tests (95 prior + 30 new in
+  `scripts/test_ha_client_package.py`, including hardcoded uuid5 regression
+  guards) pass.
+
 ## 1.37.1
 
 - Docs: adopt the WorkBuddy Connector v3.0 development baseline
