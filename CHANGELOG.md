@@ -5,6 +5,29 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.37.4
+
+- Internal refactor, no user-visible change: HTTP transport and auth helpers
+  extracted from `scripts/ha.py` into the `ha_client` package — Phase 2 Step 3
+  of the WorkBuddy baseline (`docs/plans/workbuddy-connector-v3.md` §27–28).
+  `ha_client/transport.py` holds the leaf primitives (urllib
+  send/decode/error-mapping core `open_json` with the historical
+  success→`{"raw": ...}` / error→`{"detail": ...}` non-JSON fallbacks and the
+  verbatim "Cannot reach ..." failure, request-header assembly, origin
+  normalization + HTTPS enforcement, `expect`); `ha_client/auth.py` holds the
+  pure halves of `get_token` (token-freshness predicate with the 60s refresh
+  margin, token request/response shapes, and the byte-identical
+  claim-link/pairing-code "Account not active yet" hint text). The
+  orchestrators (`http`/`authed`/`get_token`/`_absorb_status_headers`, the
+  credential store) deliberately stay in ha.py as thin compositors — the test
+  suite intercepts I/O by patching ha's names, which only works while those
+  functions resolve collaborators through ha's module globals at call time
+  (pinned by test: `ha.http` still publishes raw response headers to
+  `_last_response_headers` for the passive claim-status sync). One robustness
+  fix surfaced by the new tests: `open_json(headers=None)` now behaves per its
+  signature instead of crashing. 154 tests pass (19 new); live read-only
+  smoke (`challenges --public`) verified against production.
+
 ## 1.37.3
 
 - Internal refactor, no user-visible change: prediction-contract parsing and

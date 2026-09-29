@@ -40,7 +40,9 @@ from pathlib import Path
 # in the ha_client package next to this file. Everything is re-bound to its
 # historical name in this module's namespace so existing callers, tests
 # (mock.patch.object(ha, ...)), and the Hermes adapter keep resolving.
+from ha_client import auth, transport
 from ha_client.errors import HAFailure, fail, note
+from ha_client.transport import expect
 from ha_client.contracts import (
     FORECAST_SUBMIT_HINTS as _FORECAST_SUBMIT_HINT,
     civic_asset_from_target_key as _civic_asset_from_target_key,
@@ -60,11 +62,10 @@ from ha_client.prediction import (
     validate_ternary_vector,
 )
 
-CLI_VERSION = "1.37.3"
+CLI_VERSION = "1.37.4"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
-TOKEN_REFRESH_MARGIN = 60  # seconds before expiry to refresh
 
 # Version-check nudge: most installs are long-running agents that never revisit
 # the marketplace. The HA policy endpoint is the primary source of truth and
@@ -92,18 +93,13 @@ ALL_SCOPES = [
 
 
 def origin():
-    raw = os.environ.get("HA_BASE_URL", DEFAULT_ORIGIN).rstrip("/")
-    # accept either an origin or a full .../api/v1 base
-    if raw.endswith("/api/v1"):
-        raw = raw[: -len("/api/v1")]
-    parsed = urllib.parse.urlparse(raw)
-    if parsed.scheme != "https" and parsed.hostname not in ("localhost", "127.0.0.1"):
-        fail(f"Insecure HA_BASE_URL '{raw}': HTTPS is required except for localhost")
-    return raw
+    # normalize_origin (transport.py) accepts either an origin or a full
+    # .../api/v1 base and enforces HTTPS outside localhost.
+    return transport.normalize_origin(os.environ.get("HA_BASE_URL", DEFAULT_ORIGIN))
 
 
 def api(path):
-    return f"{origin()}/api/v1{path}"
+    return transport.api_url(origin(), path)
 
 
 # ---------------------------------------------------------------- credentials
@@ -465,63 +461,40 @@ _last_response_headers = None
 
 
 def http(method, url, body=None, token=None, agent_id=None, timeout=30):
+    # Thin compositor over transport.open_json: keeps the global
+    # _last_response_headers write (the passive claim-status sync reads it)
+    # and resolves every collaborator through this module's namespace, which
+    # is what the test suite's mock.patch.object(ha, "http"/"authed", ...)
+    # interception depends on.
     global _last_response_headers
-    headers = {
-        "Content-Type": "application/json",
-        **_version_headers(),
-        "X-Request-Id": str(uuid.uuid4()),
-    }
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    if agent_id:
-        headers["X-Agent-Id"] = agent_id
-    data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(url, data=data, headers=headers, method=method)
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            _last_response_headers = resp.headers
-            raw = resp.read().decode() or "{}"
-            try:
-                return resp.status, json.loads(raw)
-            except json.JSONDecodeError:
-                return resp.status, {"raw": raw}
-    except urllib.error.HTTPError as e:
-        _last_response_headers = e.headers
-        raw = e.read().decode() or "{}"
-        try:
-            return e.code, json.loads(raw)
-        except json.JSONDecodeError:
-            return e.code, {"detail": raw}
-    except urllib.error.URLError as e:
-        fail(f"Cannot reach {url}: {e.reason}")
+    status, _last_response_headers, resp = transport.open_json(
+        method,
+        url,
+        data=json.dumps(body).encode() if body is not None else None,
+        headers=transport.build_request_headers(
+            _version_headers(), token=token, agent_id=agent_id, request_id=uuid.uuid4()
+        ),
+        timeout=timeout,
+    )
+    return status, resp
 
 
 def get_token(force=False):
     entry = creds(required=True)
     tok = entry.get("token") or {}
-    if not force and tok.get("access_token") and tok.get("expires_at", 0) - TOKEN_REFRESH_MARGIN > time.time():
+    if not force and auth.token_is_fresh(tok, time.time()):
         return tok["access_token"]
-    status, resp = http("POST", api("/agent/auth/token"), {
-        "grant_type": "client_credentials",
-        "agent_id": entry["agent_id"],
-        "client_secret": entry["client_secret"],
-    })
+    status, resp = http(
+        "POST", api("/agent/auth/token"),
+        auth.token_request_body(entry["agent_id"], entry["client_secret"]),
+    )
     if status != 200:
         detail = resp.get("detail", resp)
         if status == 403 or "not activated" in str(detail):
-            claim = entry.get("claim_url")
-            pairing = entry.get("pairing_code")
-            hint = f" Ask your operator to open the claim link: {claim}" if claim else ""
-            if pairing:
-                hint += f" (pairing code: {pairing})"
-            if "expired" in str(detail).lower() or "refresh" in str(detail).lower():
-                hint += " Run `ha.py claim-link` to issue a fresh claim link + pairing code."
-            fail(f"Account not active yet ({detail}).{hint}", status)
-        fail(f"Token request failed: {detail}", status)
-    update_creds(token={
-        "access_token": resp["access_token"],
-        "expires_at": int(time.time()) + int(resp.get("expires_in", 900)),
-    }, status=resp.get("agent_status"), challenge=None)
+            fail(auth.inactive_account_message(detail, entry), status)
+        fail(auth.token_failure_message(detail), status)
+    update_creds(token=auth.token_from_response(resp, time.time()),
+                 status=resp.get("agent_status"), challenge=None)
     # A token was only ever issuable because the backend already considers the
     # registration challenge resolved (challenge_pending agents get a 403
     # above, before reaching this point) — so a successful response here is
@@ -587,10 +560,8 @@ def out(resp):
     print(json.dumps(resp, indent=2, ensure_ascii=False))
 
 
-def expect(status, resp, ok=(200, 201, 204)):
-    if status not in ok:
-        fail(resp.get("detail", resp), status)
-    return resp
+# expect() moved to ha_client/transport.py (Phase 2 Step 3) and imported
+# above under its original name.
 
 
 # ------------------------------------------------------------------- commands

@@ -11,18 +11,20 @@ Two goals:
    predictions on that key.
 """
 
+import io
 import json
 import os
 import sys
 import tempfile
 import unittest
+import urllib.error
 import uuid
 from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import ha  # noqa: E402
-from ha_client import contracts, errors, prediction  # noqa: E402
+from ha_client import auth, contracts, errors, prediction, transport  # noqa: E402
 
 
 class AliasIdentityTest(unittest.TestCase):
@@ -381,6 +383,182 @@ class ContractParsingTest(unittest.TestCase):
         self.assertEqual(projected["submission_route"], "human_forecast")
         self.assertEqual(projected["scope_key"], "HF_US_CPI")
         self.assertEqual(projected["outcome_shape"], "binary_probability")
+
+
+class _FakeResponse:
+    def __init__(self, status, body, headers=None):
+        self.status = status
+        self._body = body.encode()
+        self.headers = headers if headers is not None else {}
+
+    def read(self):
+        return self._body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class TransportTest(unittest.TestCase):
+    def test_normalize_origin(self):
+        self.assertEqual(transport.normalize_origin("https://x.example/"), "https://x.example")
+        self.assertEqual(
+            transport.normalize_origin("https://x.example/api/v1"), "https://x.example"
+        )
+        self.assertEqual(
+            transport.normalize_origin("http://localhost:9000/api/v1"), "http://localhost:9000"
+        )
+
+    def test_normalize_origin_rejects_insecure_http(self):
+        with self.assertRaises(ha.HAFailure) as ctx:
+            transport.normalize_origin("http://example.com")
+        self.assertEqual(
+            ctx.exception.detail,
+            "Insecure HA_BASE_URL 'http://example.com': "
+            "HTTPS is required except for localhost",
+        )
+
+    def test_api_url(self):
+        self.assertEqual(
+            transport.api_url("https://x.example", "/eval/challenges"),
+            "https://x.example/api/v1/eval/challenges",
+        )
+
+    def test_build_request_headers(self):
+        version = {"User-Agent": "headlinearena-cli/x", "X-HA-Plugin-Version": "x",
+                   "X-HA-Plugin-Host": "claude"}
+        headers = transport.build_request_headers(version, token="tok", agent_id="a1",
+                                                  request_id="rid")
+        self.assertEqual(headers["Content-Type"], "application/json")
+        self.assertEqual(headers["X-Request-Id"], "rid")
+        self.assertEqual(headers["Authorization"], "Bearer tok")
+        self.assertEqual(headers["X-Agent-Id"], "a1")
+        self.assertEqual(headers["X-HA-Plugin-Host"], "claude")
+        # Absent auth inputs must not create empty headers.
+        bare = transport.build_request_headers(version)
+        self.assertNotIn("Authorization", bare)
+        self.assertNotIn("X-Agent-Id", bare)
+        self.assertNotIn("X-Request-Id", bare)
+
+    def test_open_json_success(self):
+        with mock.patch.object(transport.urllib.request, "urlopen",
+                               return_value=_FakeResponse(200, '{"ok": true}', {"A": "b"})):
+            status, headers, body = transport.open_json("GET", "https://x/y")
+        self.assertEqual((status, body), (200, {"ok": True}))
+        self.assertEqual(headers, {"A": "b"})
+
+    def test_open_json_empty_body_decodes_to_empty_dict(self):
+        with mock.patch.object(transport.urllib.request, "urlopen",
+                               return_value=_FakeResponse(204, "")):
+            status, _, body = transport.open_json("POST", "https://x/y", data=b"{}")
+        self.assertEqual((status, body), (204, {}))
+
+    def test_open_json_non_json_success_uses_raw_key(self):
+        with mock.patch.object(transport.urllib.request, "urlopen",
+                               return_value=_FakeResponse(200, "<html>oops</html>")):
+            status, _, body = transport.open_json("GET", "https://x/y")
+        self.assertEqual(body, {"raw": "<html>oops</html>"})
+
+    def test_open_json_http_error_uses_detail_key(self):
+        err = urllib.error.HTTPError(
+            "https://x/y", 422, "Unprocessable Entity", {}, io.BytesIO(b"not json")
+        )
+        with mock.patch.object(transport.urllib.request, "urlopen", side_effect=err):
+            status, _, body = transport.open_json("POST", "https://x/y")
+        self.assertEqual(status, 422)
+        self.assertEqual(body, {"detail": "not json"})
+
+    def test_open_json_http_error_with_json_body(self):
+        err = urllib.error.HTTPError(
+            "https://x/y", 403, "Forbidden", {},
+            io.BytesIO(b'{"detail": "missing scope credits:stake"}'),
+        )
+        with mock.patch.object(transport.urllib.request, "urlopen", side_effect=err):
+            status, _, body = transport.open_json("POST", "https://x/y")
+        self.assertEqual((status, body), (403, {"detail": "missing scope credits:stake"}))
+
+    def test_open_json_url_error_message_is_verbatim(self):
+        err = urllib.error.URLError("connection refused")
+        with mock.patch.object(transport.urllib.request, "urlopen", side_effect=err):
+            with self.assertRaises(ha.HAFailure) as ctx:
+                transport.open_json("GET", "https://x/y")
+        self.assertEqual(ctx.exception.detail, "Cannot reach https://x/y: connection refused")
+
+    def test_expect_alias_and_behavior(self):
+        self.assertIs(ha.expect, transport.expect)
+        self.assertEqual(transport.expect(200, {"detail": "x"}), {"detail": "x"})
+        with self.assertRaises(ha.HAFailure) as ctx:
+            transport.expect(404, {"detail": "nope"})
+        self.assertEqual(ctx.exception.detail, "nope")
+        self.assertEqual(ctx.exception.status, 404)
+
+    def test_http_compositor_writes_last_response_headers(self):
+        # ha.http must keep publishing the raw response headers to the module
+        # global — _absorb_status_headers (passive claim sync) reads it.
+        hdrs = {"X-HA-Agent-Status": "active"}
+        with mock.patch.object(transport.urllib.request, "urlopen",
+                               return_value=_FakeResponse(200, "{}", hdrs)):
+            status, resp = ha.http("GET", "https://x/api/v1/ping")
+        self.assertEqual((status, resp), (200, {}))
+        self.assertEqual(ha._last_response_headers, hdrs)
+        ha._last_response_headers = None
+
+
+class AuthHelpersTest(unittest.TestCase):
+    def test_token_is_fresh_boundary(self):
+        now = 1000.0
+        self.assertTrue(auth.token_is_fresh(
+            {"access_token": "t", "expires_at": 1061}, now))  # 61s left > 60 margin
+        self.assertFalse(auth.token_is_fresh(
+            {"access_token": "t", "expires_at": 1060}, now))  # exactly margin → refresh
+        self.assertFalse(auth.token_is_fresh({"access_token": "t"}, now))
+        self.assertFalse(auth.token_is_fresh({}, now))
+        self.assertFalse(auth.token_is_fresh(None, now))
+
+    def test_token_request_body(self):
+        self.assertEqual(
+            auth.token_request_body("a1", "s3cret"),
+            {"grant_type": "client_credentials", "agent_id": "a1",
+             "client_secret": "s3cret"},
+        )
+
+    def test_token_from_response_expires_at(self):
+        tok = auth.token_from_response(
+            {"access_token": "t", "expires_in": 900}, 1000.0)
+        self.assertEqual(tok, {"access_token": "t", "expires_at": 1900})
+        # expires_in missing → historical 900 default
+        self.assertEqual(
+            auth.token_from_response({"access_token": "t"}, 100.0)["expires_at"], 1000)
+
+    def test_inactive_account_message_all_hints(self):
+        msg = auth.inactive_account_message(
+            "agent not activated",
+            {"claim_url": "https://ha/claim/x", "pairing_code": "4821"},
+        )
+        self.assertEqual(
+            msg,
+            "Account not active yet (agent not activated). "
+            "Ask your operator to open the claim link: https://ha/claim/x "
+            "(pairing code: 4821)",
+        )
+
+    def test_inactive_account_message_expired_hint(self):
+        msg = auth.inactive_account_message("claim expired", {"claim_url": "https://c"})
+        self.assertTrue(msg.endswith(
+            " Ask your operator to open the claim link: https://c"
+            " Run `ha.py claim-link` to issue a fresh claim link + pairing code."
+        ))
+
+    def test_inactive_account_message_no_entry_artifacts(self):
+        self.assertEqual(
+            auth.inactive_account_message("not activated", {}),
+            "Account not active yet (not activated).",
+        )
+
+    def test_token_failure_message(self):
+        self.assertEqual(auth.token_failure_message("boom"), "Token request failed: boom")
 
 
 if __name__ == "__main__":
