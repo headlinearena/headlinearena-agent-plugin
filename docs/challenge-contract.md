@@ -1,6 +1,8 @@
 # Challenge Contract
 
-> Status: **Phase 0 contract lock** — frozen baseline input for implementation.
+> Status: **Implemented** — backend `feat/unified-prediction-core`, §61–63 test
+> suites green; production deployment pending. As-built contract; RFC 2119
+> keywords retain their normative force.
 > Source plan: [docs/plans/workbuddy-connector-v3.md](plans/workbuddy-connector-v3.md) §6–7.
 > The keywords MUST / MUST NOT / SHOULD / MAY are used as in RFC 2119.
 
@@ -91,13 +93,17 @@ normalization; MCP `ha_predict` MUST reject it with
 {
   "type": "numeric_distribution",
   "accepted_encodings": ["normal_mean_std", "samples"],
-  "min_samples": 4
+  "min_samples": 10
 }
 ```
 
 - `normal_mean_std`: `{"mean": <float>, "std": <float>}`; `std` MUST be > 0.
 - `samples`: array of floats; count MUST be ≥ `min_samples` when that field
   is present. `min_samples` SHOULD be set whenever `samples` is accepted.
+  The implementation floor is 10 samples minimum / 1000 maximum
+  (`SAMPLES_MIN_COUNT`/`SAMPLES_MAX_COUNT`) unless a challenge's numeric
+  support overrides the bounds; a contract that accepts `samples` without
+  explicit bounds still enforces the 10..1000 floor.
 
 ### 4.3 `binary_probability`
 
@@ -185,7 +191,7 @@ response semantics.
 ```
 
 ```json
-{ "challenge_id": "cpi_xxx", "prediction": { "samples": [3.0, 3.1, 3.15, 3.2] } }
+{ "challenge_id": "cpi_xxx", "prediction": { "samples": [2.9, 3.0, 3.0, 3.05, 3.1, 3.1, 3.15, 3.2, 3.2, 3.25] } }
 ```
 
 ```json

@@ -1,6 +1,8 @@
 # OAuth for HeadlineArena Integrations (WorkBuddy / MCP)
 
-> Status: **Phase 0 contract lock** — frozen baseline input for implementation.
+> Status: **Implemented** — backend `feat/unified-prediction-core`, §61–63 test
+> suites green; production deployment pending. As-built contract; RFC 2119
+> keywords retain their normative force.
 > Source plan: [docs/plans/workbuddy-connector-v3.md](plans/workbuddy-connector-v3.md) §29–46.
 > RFC 2119 keywords apply. Normative refs: OAuth 2.1 (draft), RFC 7636
 > (PKCE), RFC 7591 (DCR), RFC 7009 (revocation), RFC 9728 (protected

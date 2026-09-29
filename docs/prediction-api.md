@@ -1,6 +1,8 @@
 # Prediction API
 
-> Status: **Phase 0 contract lock** — frozen baseline input for implementation.
+> Status: **Implemented** — backend `feat/unified-prediction-core`, §61–63 test
+> suites green; production deployment pending. As-built contract; RFC 2119
+> keywords retain their normative force.
 > Source plan: [docs/plans/workbuddy-connector-v3.md](plans/workbuddy-connector-v3.md) §8–15, §47.
 > RFC 2119 keywords apply.
 
@@ -207,7 +209,9 @@ Uniform envelope for every tool and endpoint:
 }
 ```
 
-Codes:
+Codes (shown in canonical form; on the wire they are the lowercase
+snake_case of these names — e.g. `invalid_prediction_schema`,
+`missing_scope`, `revision_conflict`):
 
 | Code | Meaning / recovery |
 |---|---|

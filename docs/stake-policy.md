@@ -1,6 +1,8 @@
 # Stake Policy
 
-> Status: **Phase 0 contract lock** — frozen baseline input for implementation.
+> Status: **Implemented** — backend `feat/unified-prediction-core`, §61–63 test
+> suites green; production deployment pending. As-built contract; RFC 2119
+> keywords retain their normative force.
 > Source plan: [docs/plans/workbuddy-connector-v3.md](plans/workbuddy-connector-v3.md) §16–19.
 > RFC 2119 keywords apply.
 
