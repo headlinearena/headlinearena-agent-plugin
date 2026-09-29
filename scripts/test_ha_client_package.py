@@ -22,7 +22,7 @@ from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import ha  # noqa: E402
-from ha_client import errors, prediction  # noqa: E402
+from ha_client import contracts, errors, prediction  # noqa: E402
 
 
 class AliasIdentityTest(unittest.TestCase):
@@ -290,6 +290,97 @@ class BodyBuildersTest(unittest.TestCase):
             ).hex,
             "d0324372f438578ca7a7f9360ff169f6",
         )
+
+
+class ContractsAliasTest(unittest.TestCase):
+    def test_projections_and_hint_table_are_shared(self):
+        self.assertIs(ha._civic_from_contract_entry, contracts.civic_from_contract_entry)
+        self.assertIs(ha._legacy_macro_as_civic, contracts.legacy_macro_as_civic)
+        self.assertIs(ha._civic_asset_from_target_key, contracts.civic_asset_from_target_key)
+        self.assertIs(ha._FORECAST_SUBMIT_HINT, contracts.FORECAST_SUBMIT_HINTS)
+
+    def test_hint_keys_are_the_submittable_shapes(self):
+        # The key set doubles as the accepted outcome_shape enum in
+        # civic_from_contract_entry — pin it so a new shape cannot silently
+        # widen discovery without a deliberate hint being added.
+        self.assertEqual(
+            set(contracts.FORECAST_SUBMIT_HINTS),
+            {
+                "numeric_distribution",
+                "binary_probability",
+                "ordered_categorical_distribution",
+            },
+        )
+        for hint in contracts.FORECAST_SUBMIT_HINTS.values():
+            self.assertTrue(hint.startswith("forecast <id>"))
+
+
+class ContractParsingTest(unittest.TestCase):
+    def _response(self, version="prediction-contract-v2", entries=None, **extra):
+        body = {"api_contract_version": version, "entries": entries or []}
+        body.update(extra)
+        return body
+
+    def test_valid_response_returns_entries(self):
+        entries = [{"contract": {}}, {"contract": {}}]
+        self.assertEqual(
+            ha.parse_contract_response(self._response(entries=entries)), entries
+        )
+
+    def test_unknown_version_message_is_verbatim(self):
+        with self.assertRaises(ha.HAFailure) as ctx:
+            ha.parse_contract_response(self._response(version="prediction-contract-v3"))
+        self.assertEqual(
+            ctx.exception.detail,
+            "Unsupported prediction discovery contract; expected prediction-contract-v2. "
+            "Update the HeadlineArena plugin before submitting.",
+        )
+
+    def test_non_dict_response_fails_closed(self):
+        with self.assertRaises(ha.HAFailure):
+            ha.parse_contract_response(["not", "a", "dict"])
+
+    def test_malformed_entries_message_is_verbatim(self):
+        with self.assertRaises(ha.HAFailure) as ctx:
+            ha.parse_contract_response(
+                self._response(entries={"not": "a list"})
+            )
+        self.assertEqual(
+            ctx.exception.detail,
+            "Malformed prediction-contract-v2 response: entries must be a list",
+        )
+
+    def test_asset_derivation(self):
+        self.assertEqual(ha._civic_asset_from_target_key("HF_US_CPI"), "CPI")
+        self.assertEqual(ha._civic_asset_from_target_key("HF_US_JOBLESS_CLAIMS"),
+                         "JOBLESS_CLAIMS")
+        self.assertEqual(ha._civic_asset_from_target_key("CPI"), "CPI")
+        self.assertEqual(ha._civic_asset_from_target_key(""), "")
+        self.assertEqual(ha._civic_asset_from_target_key(None), "")
+
+    def test_non_dict_entry_projected_to_none(self):
+        self.assertIsNone(ha._civic_from_contract_entry("nope"))
+        self.assertIsNone(ha._civic_from_contract_entry({}))
+        self.assertIsNone(ha._legacy_macro_as_civic({"not": "an id"}))
+
+    def test_legacy_macro_projection_carries_frozen_route(self):
+        projected = ha._legacy_macro_as_civic(
+            {"id": "m-1", "asset": "CPI", "deadline": "2026-10-01", "unit": "pct"}
+        )
+        self.assertEqual(projected["submission_route"], "macro_numeric_legacy")
+        self.assertEqual(projected["outcome_shape"], "numeric_distribution")
+        self.assertEqual(projected["compatibility_status"], "legacy_open_round")
+        self.assertEqual(projected["forecast_schema"]["required_fields"], ["mean", "std"])
+        self.assertEqual(projected["asset"], "CPI")
+
+    def test_legacy_human_forecast_fallback_projection(self):
+        projected = ha._civic_from_legacy_human_forecast(
+            {"id": "hf-1", "target_key": "HF_US_CPI", "outcome_shape": "binary_probability"}
+        )
+        self.assertEqual(projected["asset"], "CPI")
+        self.assertEqual(projected["submission_route"], "human_forecast")
+        self.assertEqual(projected["scope_key"], "HF_US_CPI")
+        self.assertEqual(projected["outcome_shape"], "binary_probability")
 
 
 if __name__ == "__main__":

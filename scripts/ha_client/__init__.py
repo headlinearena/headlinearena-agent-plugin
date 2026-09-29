@@ -10,4 +10,5 @@ Layout target — transport/auth land in later steps:
 
   errors.py      HAFailure / fail / note
   prediction.py  prediction validation + payload construction
+  contracts.py   prediction-contract-v2 parsing + Civic/legacy projections
 """

@@ -41,6 +41,14 @@ from pathlib import Path
 # historical name in this module's namespace so existing callers, tests
 # (mock.patch.object(ha, ...)), and the Hermes adapter keep resolving.
 from ha_client.errors import HAFailure, fail, note
+from ha_client.contracts import (
+    FORECAST_SUBMIT_HINTS as _FORECAST_SUBMIT_HINT,
+    civic_asset_from_target_key as _civic_asset_from_target_key,
+    civic_from_contract_entry as _civic_from_contract_entry,
+    civic_from_legacy_human_forecast as _civic_from_legacy_human_forecast,
+    legacy_macro_as_civic as _legacy_macro_as_civic,
+    parse_contract_response,
+)
 from ha_client.prediction import (
     build_civic_forecast_body,
     build_forecast_payload as _build_forecast_payload,
@@ -52,7 +60,7 @@ from ha_client.prediction import (
     validate_ternary_vector,
 )
 
-CLI_VERSION = "1.37.2"
+CLI_VERSION = "1.37.3"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -1237,15 +1245,11 @@ def _fetch_civic_numeric_challenges():
     for item in items:
         if item.get("outcome_shape", "numeric_distribution") != "numeric_distribution":
             continue
-        target_key = item.get("target_key", "")
-        # "HF_US_CPI" -> "CPI"; drop the leading family tag and the region code.
-        parts = target_key.split("_")
-        asset = "_".join(parts[2:]) if len(parts) > 2 else target_key
         out_items.append(
             {
                 "id": item.get("id"),
-                "asset": asset,
-                "scope_key": item.get("scope_key", target_key),
+                "asset": _civic_asset_from_target_key(item.get("target_key", "")),
+                "scope_key": item.get("scope_key", item.get("target_key", "")),
                 "region": item.get("region"),
                 "status": item.get("status"),
                 "deadline": item.get("deadline"),
@@ -1253,12 +1257,6 @@ def _fetch_civic_numeric_challenges():
             }
         )
     return out_items
-
-
-def _civic_asset_from_target_key(target_key):
-    # "HF_US_CPI" -> "CPI"; drop the leading family tag and the region code.
-    parts = (target_key or "").split("_")
-    return "_".join(parts[2:]) if len(parts) > 2 else (target_key or "")
 
 
 def _fetch_prediction_contract_entries():
@@ -1272,90 +1270,12 @@ def _fetch_prediction_contract_entries():
     status, resp = http("GET", api("/public/prediction-contracts"))
     if status != 200:
         return status, []
-    if not isinstance(resp, dict) or resp.get("api_contract_version") != "prediction-contract-v2":
-        fail(
-            "Unsupported prediction discovery contract; expected prediction-contract-v2. "
-            "Update the HeadlineArena plugin before submitting."
-        )
-    entries = resp.get("entries")
-    if not isinstance(entries, list):
-        fail("Malformed prediction-contract-v2 response: entries must be a list")
-    return status, entries
+    return status, parse_contract_response(resp)
 
 
-def _civic_from_contract_entry(entry):
-    if not isinstance(entry, dict):
-        return None
-    contract = entry.get("contract")
-    challenge = entry.get("current_challenge")
-    if not isinstance(contract, dict) or not isinstance(challenge, dict):
-        return None
-    execution_route = (contract.get("execution_family"), contract.get("submission_route"))
-    if (
-        contract.get("api_contract_version") != "prediction-contract-v2"
-        or contract.get("site") != "global"
-        or execution_route not in {
-            ("human_forecast", "human_forecast"),
-            ("macro_numeric", "macro_numeric_legacy"),
-        }
-        or contract.get("participation_contract") != "forecast_and_stake"
-        or contract.get("submission_atomic") is not True
-        or not {"prediction:submit", "credits:stake"}.issubset(
-            set(contract.get("required_scopes") or [])
-        )
-        or contract.get("outcome_shape") not in _FORECAST_SUBMIT_HINT
-        or not isinstance(contract.get("forecast_schema"), dict)
-        or challenge.get("status") != "open"
-    ):
-        return None
-    target_key = contract.get("target_key")
-    return {
-        "id": challenge.get("challenge_id"),
-        "asset": _civic_asset_from_target_key(target_key),
-        "target_key": target_key,
-        "scope_key": contract.get("scope_key", target_key),
-        "region": contract.get("region"),
-        "status": challenge.get("status"),
-        "deadline": challenge.get("deadline"),
-        "outcome_shape": contract.get("outcome_shape"),
-        "forecast_schema": contract.get("forecast_schema"),
-        "participation_contract": contract.get("participation_contract"),
-        "required_scopes": contract.get("required_scopes"),
-        "execution_family": contract.get("execution_family"),
-        "submission_route": contract.get("submission_route"),
-        "compatibility_status": contract.get("compatibility_status"),
-    }
-
-
-def _legacy_macro_as_civic(item):
-    """Project an already-open Legacy Macro round into the canonical Civic
-    discovery shape. The route remains explicit so `forecast` preserves the
-    round's frozen legacy write contract instead of pretending it was created
-    by Human Forecast."""
-    if not isinstance(item, dict) or not item.get("id"):
-        return None
-    canonical = item.get("canonical_target_key") or item.get("asset")
-    return {
-        "id": item.get("id"),
-        "asset": _civic_asset_from_target_key(canonical),
-        "target_key": canonical,
-        "scope_key": item.get("scope_key", canonical),
-        "region": item.get("region"),
-        "status": item.get("status", "open"),
-        "deadline": item.get("deadline"),
-        "unit": item.get("unit"),
-        "outcome_shape": "numeric_distribution",
-        "forecast_schema": {
-            "outcome_shape": "numeric_distribution",
-            "input_encoding": "normal_mean_std",
-            "required_fields": ["mean", "std"],
-            "additional_properties": False,
-        },
-        "participation_contract": "forecast_and_stake",
-        "required_scopes": ["prediction:submit", "credits:stake"],
-        "submission_route": "macro_numeric_legacy",
-        "compatibility_status": item.get("compatibility_status", "legacy_open_round"),
-    }
+# civic_from_contract_entry / legacy_macro_as_civic / civic_asset_from_target_key
+# / the fail-closed contract-response parsing moved to ha_client/contracts.py
+# (Phase 2 Step 2) and are imported above under their original names.
 
 
 def _fetch_civic_challenges():
@@ -1384,22 +1304,7 @@ def _fetch_civic_challenges():
         if legacy_status == 200:
             items = resp.get("challenges", resp.get("items", []))
             for item in items:
-                out_items.append(
-                    {
-                        "id": item.get("id"),
-                        "asset": _civic_asset_from_target_key(item.get("target_key", "")),
-                        "target_key": item.get("target_key"),
-                        "scope_key": item.get("scope_key", item.get("target_key")),
-                        "region": item.get("region"),
-                        "status": item.get("status"),
-                        "deadline": item.get("deadline"),
-                        "unit": item.get("unit"),
-                        "outcome_shape": item.get("outcome_shape"),
-                        "forecast_schema": item.get("forecast_schema"),
-                        "bins": item.get("bins"),
-                        "submission_route": "human_forecast",
-                    }
-                )
+                out_items.append(_civic_from_legacy_human_forecast(item))
 
     # Until every target has crossed its explicit period boundary, currently
     # open Legacy Macro rounds remain valid Civic compatibility rounds. Always
@@ -1419,13 +1324,6 @@ def _fetch_civic_challenges():
             # route/schema and is the canonical contract.
             deduped.setdefault(item["id"], item)
     return list(deduped.values())
-
-
-_FORECAST_SUBMIT_HINT = {
-    "numeric_distribution": "forecast <id> --mean <n> --std <n> --amount <n>  (or --samples <n,n,...>)",
-    "binary_probability": "forecast <id> --yes-probability <0..1> --amount <n>",
-    "ordered_categorical_distribution": "forecast <id> --probability CAT=P [--probability CAT=P ...] --amount <n>",
-}
 
 
 def cmd_challenges(args):

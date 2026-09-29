@@ -5,6 +5,26 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.37.3
+
+- Internal refactor, no user-visible change: prediction-contract parsing and
+  the Civic/legacy projections extracted from `scripts/ha.py` into
+  `scripts/ha_client/contracts.py` — the fail-closed prediction-contract-v2
+  response validation, `civic_from_contract_entry` (v2 entry → canonical
+  Civic item), `legacy_macro_as_civic` (open Legacy Macro round → Civic
+  shape with its frozen `macro_numeric_legacy` route), the
+  `civic_from_legacy_human_forecast` rolling-deploy fallback projection, and
+  the `_FORECAST_SUBMIT_HINT` shape/hint table (now
+  `FORECAST_SUBMIT_HINTS`, its key set pinned by test as the accepted
+  outcome_shape enum). Phase 2 Step 2 of the WorkBuddy baseline
+  (`docs/plans/workbuddy-connector-v3.md` §27–28). HTTP fetchers stay in
+  `ha.py` and every moved name is re-imported under its historical
+  underscore alias, so `mock.patch.object(ha, "_fetch_...")` in the existing
+  suites keeps intercepting at the same call sites. One tidy: the duplicated
+  inline `HF_US_CPI`→`CPI` asset derivation in `_fetch_civic_numeric_challenges`
+  now calls the shared helper. Error messages byte-identical; 135 tests pass
+  (10 new in `scripts/test_ha_client_package.py`).
+
 ## 1.37.2
 
 - Internal refactor, no user-visible change: prediction validation and payload
