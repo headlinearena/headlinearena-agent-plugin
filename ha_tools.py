@@ -9,7 +9,10 @@ caching/refresh, and HTTP plumbing as-is — nothing here talks to the
 HeadlineArena API directly.
 
 ha.py's fail() raises HAFailure (not sys.exit) specifically so this adapter
-can catch it instead of killing the whole Hermes host process.
+can catch it instead of killing the whole Hermes host process. (ha.py is a
+stable compositor over the scripts/ha_client/ leaf package since v1.37.2 —
+irrelevant to this adapter, which only calls cmd_* and catches ha.HAFailure;
+see docs/migration-guide.md.)
 
 Multiple agents can be registered against the same origin; ha_* tools operate
 on the origin's default agent (see ha_agents / ha_use) unless the HA_AGENT_ID

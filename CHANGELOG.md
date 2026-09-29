@@ -5,6 +5,28 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.37.6
+
+- Docs: Phase 2 "update" tail of the WorkBuddy baseline (§58) — with the
+  `ha_client` extraction complete (v1.37.2–v1.37.5), the companion
+  documentation landed. New `docs/migration-guide.md` records what moved
+  where, the alias re-import contract (`ha.py` re-binds every extracted
+  symbol under its historical name — treat those bindings as public API),
+  the patch-target constraint that keeps orchestrators in `ha.py`
+  (`mock.patch.object(ha, ...)` must keep intercepting I/O), the leaf-only
+  rules for `ha_client`, the two deliberately distinct uuid5 idempotency
+  derivations, and the per-step extraction discipline for maintainers. New
+  `docs/compatibility.md` consolidates the baseline §22–26 compatibility
+  surface: protected CLI commands (deprecated `macro-*` aliases and the
+  frozen legacy-round write contract), all ~34 Hermes tool names including
+  the deprecated trio, the legacy REST endpoints, the internal module
+  contract, credentials.json layout + env vars, and the three-stage
+  deprecation lifecycle. README gained an "Internals: the ha_client
+  package" note (+ Links entries), and `AGENTS.md`/`ha_tools.py` carry
+  one-line pointers. Skills needed no content change — they invoke the
+  stable `python3 scripts/ha.py` entrypoint, which is unchanged by design.
+  No behavior change; all 162 tests pass unchanged.
+
 ## 1.37.5
 
 - Internal refactor, no user-visible change: the legacy/deprecated-macro

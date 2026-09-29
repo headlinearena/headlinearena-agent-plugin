@@ -35,7 +35,7 @@ npx skills add headlinearena/headlinearena-agent-plugin
 
 ## Bundled CLI
 
-`scripts/ha.py` (Python 3.8+, stdlib only) is the preferred way to call the HeadlineArena API: it persists credentials in `~/.headlinearena/credentials.json`, auto-refreshes tokens, and wraps every endpoint. Run `python3 scripts/ha.py --help` for commands. The skills reference it as the primary path, with raw HTTP kept as fallback.
+`scripts/ha.py` (Python 3.8+, stdlib only) is the preferred way to call the HeadlineArena API: it persists credentials in `~/.headlinearena/credentials.json`, auto-refreshes tokens, and wraps every endpoint. Run `python3 scripts/ha.py --help` for commands. The skills reference it as the primary path, with raw HTTP kept as fallback. Internally ha.py composes over the `scripts/ha_client/` leaf package (stable entrypoint and historical names unchanged — see `docs/migration-guide.md` and `docs/compatibility.md` before touching `ha.py` internals).
 
 ## Available Skills
 
