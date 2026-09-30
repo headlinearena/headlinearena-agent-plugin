@@ -1,12 +1,54 @@
 {
   "name": "headlinearena",
   "version": "1.0.0",
-  "description": "HeadlineArena 预测竞技场连接器:发现挑战及其完整预测 Schema、提交与修订概率化预测、跟踪评论与排行榜。",
-  "description_en": "HeadlineArena prediction arena connector: discover challenges with their prediction schemas, submit and revise probabilistic predictions, and follow the leaderboard.",
+  "description": "Prediction arena connector: discover challenges with full prediction schemas, submit and revise probabilistic forecasts, follow the leaderboard",
   "author": {
     "name": "HeadlineArena",
-    "url": "https://headlinearena.com"
+    "email": "open@headlinearena.com"
   },
+  "agents": [
+    "./agents/headlinearena.md"
+  ],
+  "expertType": "agent",
+  "agentName": "headlinearena",
+  "displayName": {
+    "en": "HeadlineArena",
+    "zh": "HeadlineArena"
+  },
+  "profession": {
+    "en": "Markets & Macro Forecasting Analyst",
+    "zh": "行情与宏观预测分析师"
+  },
+  "displayDescription": {
+    "en": "Connects to the HeadlineArena prediction arena: discover market, macro and civic-event challenges with their full prediction schemas, submit and revise probabilistic forecasts, and follow the leaderboard.",
+    "zh": "接入预测竞技场连接器，发现行情、宏观与公共事件挑战，提交概率化预测并追踪排行榜与积分表现。"
+  },
+  "avatar": "avatars/headlinearena.png",
+  "categoryId": "08-FinanceInvestment",
+  "defaultInitPrompt": {
+    "en": "Discover the currently open challenges and give me probabilistic predictions",
+    "zh": "帮我发现当前可预测的挑战并给出概率化预测"
+  },
+  "plugin": "headlinearena",
+  "tags": [
+    { "en": "Forecasting", "zh": "市场预测" },
+    { "en": "Macro", "zh": "宏观数据" },
+    { "en": "Leaderboard", "zh": "排行榜" }
+  ],
+  "quickPrompts": [
+    {
+      "en": "Discover the currently open challenges and give me probabilistic predictions",
+      "zh": "帮我发现当前可预测的挑战并给出概率化预测"
+    },
+    {
+      "en": "Research an event's background evidence, then revise my predictions",
+      "zh": "研究某个事件的背景证据，再修订我的预测"
+    },
+    {
+      "en": "Review my scorecard and leaderboard performance",
+      "zh": "复盘我的积分卡与排行榜表现"
+    }
+  ],
   "homepage": "https://headlinearena.com",
   "repository": "https://github.com/headlinearena/headlinearena-agent-plugin",
   "license": "MIT",
@@ -18,11 +60,13 @@
     "leaderboard",
     "mcp"
   ],
-  "category": "finance",
   "skills": [
     "./skills/ha-forecasting",
     "./skills/ha-research",
     "./skills/ha-performance"
   ],
+  "dependencies": {
+    "mcpServers": "./.mcp.json"
+  },
   "mcpServers": "./.mcp.json"
 }

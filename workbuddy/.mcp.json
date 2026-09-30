@@ -1,9 +1,23 @@
 {
   "mcpServers": {
     "headlinearena": {
-      "type": "streamableHttp",
+      "type": "http",
       "url": "https://mcp.headlinearena.com/mcp",
-      "timeout": 30000
+      "timeout": 30000,
+      "x-workbuddy": {
+        "displayName": {
+          "zh": "HeadlineArena 预测竞技场",
+          "en": "HeadlineArena Prediction Arena"
+        },
+        "description": {
+          "zh": "连接后发现行情、宏观与公共事件挑战及其预测 Schema，提交概率化预测，跟踪排行榜与积分。",
+          "en": "Discover market, macro and civic-event challenges with their prediction schemas, submit probabilistic forecasts, and follow the leaderboard."
+        },
+        "icon": "./avatars/headlinearena.png",
+        "auth": {
+          "type": "oauth"
+        }
+      }
     }
   }
 }
