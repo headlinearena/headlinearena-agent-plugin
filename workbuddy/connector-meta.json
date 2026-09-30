@@ -23,7 +23,7 @@
   "auth": {
     "protocol": "oauth2",
     "note": "The MCP server ships its own OAuth 2.1 authorization server (RFC 9728 discovery). No auth_mode or token schema is declared: WorkBuddy uses the standard MCP OAuth flow via the WWW-Authenticate challenge.",
-    "authorization_servers": ["https://headlinearena.com"],
+    "authorization_servers": ["https://mcp.headlinearena.com"],
     "protected_resource": "https://mcp.headlinearena.com"
   },
   "scopes": [
