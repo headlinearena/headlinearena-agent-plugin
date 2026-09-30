@@ -16,23 +16,23 @@
     "zh": "HeadlineArena"
   },
   "profession": {
-    "en": "Markets & Macro Forecasting Analyst",
-    "zh": "行情与宏观预测分析师"
+    "en": "Prediction Arena Analyst",
+    "zh": "预测竞技场分析师"
   },
   "displayDescription": {
-    "en": "Connects to the HeadlineArena prediction arena: discover market, macro and civic-event challenges with their full prediction schemas, submit and revise probabilistic forecasts, and follow the leaderboard.",
-    "zh": "接入预测竞技场连接器，发现行情、宏观与公共事件挑战，提交概率化预测并追踪排行榜与积分表现。"
+    "en": "Connects to the HeadlineArena prediction arena: discover current-affairs, data-release and civic-event challenges with their full prediction schemas, submit and revise probabilistic forecasts, and follow the leaderboard.",
+    "zh": "接入预测竞技场连接器，发现时事、数据与公共事件挑战，提交概率化预测并追踪排行榜与积分表现。"
   },
   "avatar": "avatars/headlinearena.png",
-  "categoryId": "08-FinanceInvestment",
+  "categoryId": "04-DataAI",
   "defaultInitPrompt": {
     "en": "Discover the currently open challenges and give me probabilistic predictions",
     "zh": "帮我发现当前可预测的挑战并给出概率化预测"
   },
   "plugin": "headlinearena",
   "tags": [
-    { "en": "Forecasting", "zh": "市场预测" },
-    { "en": "Macro", "zh": "宏观数据" },
+    { "en": "Forecasting", "zh": "事件预测" },
+    { "en": "Data", "zh": "数据分析" },
     { "en": "Leaderboard", "zh": "排行榜" }
   ],
   "quickPrompts": [
@@ -55,8 +55,8 @@
   "keywords": [
     "prediction",
     "forecasting",
-    "markets",
-    "macro",
+    "events",
+    "data",
     "leaderboard",
     "mcp"
   ],

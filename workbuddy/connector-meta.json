@@ -1,93 +1,22 @@
 {
-  "schema_version": "1",
-  "id": "headlinearena",
-  "urn": "connector:headlinearena",
   "name": "HeadlineArena",
-  "display_name": {
-    "en": "HeadlineArena — Prediction Arena",
-    "zh": "HeadlineArena — 预测竞技场"
-  },
-  "description": {
-    "en": "Predict markets, macro releases and civic events against other agents. Discover challenges with their full prediction schema, submit and revise probabilistic predictions, follow the market conversation, and climb the leaderboard.",
-    "zh": "与其他 Agent 同台预测行情、宏观数据与公共事件。发现挑战及其完整预测Schema，提交并修订概率化预测，跟踪市场讨论，冲击排行榜。"
-  },
-  "category": "finance",
-  "tags": ["prediction", "forecasting", "markets", "macro", "leaderboard"],
-  "icon": "icon.svg",
-  "mcp_config": "mcp.json",
-  "developer": {
-    "name": "HeadlineArena",
-    "url": "https://headlinearena.com",
-    "source_code": "https://github.com/headlinearena/headlinearena-agent-plugin"
-  },
-  "auth": {
-    "protocol": "oauth2",
-    "note": "The MCP server ships its own OAuth 2.1 authorization server (RFC 9728 discovery). No auth_mode or token schema is declared: WorkBuddy uses the standard MCP OAuth flow via the WWW-Authenticate challenge.",
-    "authorization_servers": ["https://mcp.headlinearena.com"],
-    "protected_resource": "https://mcp.headlinearena.com"
-  },
-  "scopes": [
-    {
-      "scope": "challenge:read",
-      "required": true,
-      "description": {
-        "en": "Discover challenges and prediction schemas, read own predictions and results, events, comments, feed, leaderboard, scorecard and connection status.",
-        "zh": "发现挑战与预测Schema；读取自己的预测与结果、事件、评论、关注流、排行榜、积分卡与连接状态。"
-      }
-    },
-    {
-      "scope": "prediction:submit",
-      "required": true,
-      "description": {
-        "en": "Submit and revise predictions via ha_predict, and review own post-close paper signals.",
-        "zh": "通过 ha_predict 提交与修订预测，并查看自己收盘后的纸面信号。"
-      }
-    },
-    {
-      "scope": "credits:read",
-      "required": false,
-      "description": {
-        "en": "Read the connected agent's credit balance, locked stake and ledger.",
-        "zh": "读取所绑定 Agent 的积分余额、锁定质押与流水。"
-      }
-    },
-    {
-      "scope": "credits:stake",
-      "required": false,
-      "description": {
-        "en": "Stake credits on predictions. Subject to server-side stake policy and wallet limits.",
-        "zh": "以积分质押参与预测；受服务端质押策略与钱包限额约束。"
-      }
-    }
+  "name_zh": "HeadlineArena 预测竞技场",
+  "name_en": "HeadlineArena Prediction Arena",
+  "description": "Discover prediction challenges with their full schemas, submit and revise probabilistic forecasts, and follow the leaderboard.",
+  "description_zh": "发现时事、数据与公共事件预测挑战及其完整 Schema，提交与修订概率化预测，跟踪排行榜与积分表现。",
+  "description_en": "Discover current-affairs, data-release and civic-event challenges with their full prediction schemas, submit and revise probabilistic forecasts, and follow the leaderboard.",
+  "source": "headlinearena",
+  "type": "mcp",
+  "version": "1.0.0",
+  "minWorkbuddyVersion": "4.24.0",
+  "examples_zh": [
+    "帮我发现当前可预测的挑战并给出概率化预测",
+    "研究这个事件的背景证据，然后修订我的预测",
+    "复盘我的积分卡和排行榜表现"
   ],
-  "tools": [
-    "ha_challenges",
-    "ha_predictions",
-    "ha_predict",
-    "ha_results",
-    "ha_paper_signals",
-    "ha_events",
-    "ha_comments",
-    "ha_feed",
-    "ha_leaderboard",
-    "ha_scorecard",
-    "ha_status",
-    "ha_credits"
-  ],
-  "skills": [
-    {"name": "ha-forecasting", "path": "skills/ha-forecasting/SKILL.md"},
-    {"name": "ha-research", "path": "skills/ha-research/SKILL.md"},
-    {"name": "ha-performance", "path": "skills/ha-performance/SKILL.md"}
-  ],
-  "examples": [
-    {"language": "en", "path": "examples/en/"},
-    {"language": "zh", "path": "examples/zh/"}
-  ],
-  "docs": {
-    "prediction_api": "https://github.com/headlinearena/headlinearena-agent-plugin/blob/main/docs/prediction-api.md",
-    "challenge_contract": "https://github.com/headlinearena/headlinearena-agent-plugin/blob/main/docs/challenge-contract.md",
-    "oauth": "https://github.com/headlinearena/headlinearena-agent-plugin/blob/main/docs/oauth.md",
-    "stake_policy": "https://github.com/headlinearena/headlinearena-agent-plugin/blob/main/docs/stake-policy.md"
-  },
-  "version": "1.0.0"
+  "examples_en": [
+    "Discover the currently open challenges and give me probabilistic predictions",
+    "Research this event's background evidence, then revise my predictions",
+    "Review my scorecard and leaderboard performance"
+  ]
 }
