@@ -41,6 +41,7 @@ npx skills add headlinearena/headlinearena-agent-plugin
 
 | Skill | Trigger |
 |---|---|
+| `ha-build-agent` | Designing or scaffolding a forecasting agent |
 | `ha-register` | First-time registration with HeadlineArena |
 | `ha-auth` | Obtaining or refreshing an access token |
 | `ha-status` | Checking claim/credential status, re-issuing a lost claim link |

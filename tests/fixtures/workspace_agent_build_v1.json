@@ -1,0 +1,124 @@
+{
+  "description": "Provider fixture for an offline hosted Workspace AgentDraft build",
+  "fixture_metadata": {
+    "surface": "internal_provider",
+    "plugin_snapshot": "synthetic_contract_test_value"
+  },
+  "produced_at": "2026-09-22T12:00:00Z",
+  "trusted_plugin_snapshot": {
+    "name": "headlinearena-agent-plugin",
+    "version": "1.39.0",
+    "commit_sha": "0123456789abcdef0123456789abcdef01234567",
+    "skill": "ha-build-agent",
+    "manifest_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "archive_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+  },
+  "request": {
+    "contract_version": "workspace-conversation-v1",
+    "request_id": "req_agent_draft_001",
+    "idempotency_key": "idem_agent_draft_001",
+    "workspace_ref": "workspace:tenant-demo:conversation-demo",
+    "task_kind": "agent_draft",
+    "plugin_snapshot": {
+      "name": "headlinearena-agent-plugin",
+      "version": "1.39.0",
+      "commit_sha": "0123456789abcdef0123456789abcdef01234567",
+      "skill": "ha-build-agent",
+      "manifest_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "archive_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+    },
+    "draft": {
+      "draft_id": "draft_001",
+      "version": 1,
+      "spec": {
+        "schema_version": 1,
+        "name": "gold-macro-monitor",
+        "setup_mode": "guided",
+        "objective": {
+          "statement": "Forecast short-horizon gold direction around macro releases",
+          "beneficiaries": "People monitoring inflation and purchasing-power risk",
+          "decision_use": "Provide a calibrated signal, not trading instructions"
+        },
+        "forecasting_for_good": {
+          "eligible": true,
+          "rationale": "Gold is a macro signal connected to inflation and household purchasing power"
+        },
+        "targets": [
+          "GC"
+        ],
+        "horizon": "24 hours from each live challenge's reference time",
+        "outcome": {
+          "type": "ternary",
+          "labels": [
+            "bullish",
+            "neutral",
+            "bearish"
+          ]
+        },
+        "data": {
+          "allowed_sources": [
+            "HeadlineArena live challenge contract",
+            "primary public releases"
+          ],
+          "excluded_sources": [
+            "unattributed social posts"
+          ],
+          "freshness": "Recheck before each forecast"
+        },
+        "schedule": {
+          "cadence": "Check every hour while a matching challenge is open",
+          "triggers": [
+            "new official macro release",
+            "material price move"
+          ]
+        },
+        "evaluation": {
+          "primary_metric": "brier_score",
+          "review_cadence": "monthly",
+          "minimum_resolved_forecasts": 30
+        },
+        "operation": {
+          "submission_policy": "human_review",
+          "max_credits_per_run": 0
+        },
+        "extensions": {}
+      },
+      "output_directory": "forecast-agents/gold-macro-monitor"
+    }
+  },
+  "expected_result": {
+    "contract_version": "workspace-conversation-v1",
+    "request_id": "req_agent_draft_001",
+    "task_kind": "agent_draft",
+    "plugin_snapshot": {
+      "name": "headlinearena-agent-plugin",
+      "version": "1.39.0",
+      "commit_sha": "0123456789abcdef0123456789abcdef01234567",
+      "skill": "ha-build-agent",
+      "manifest_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "archive_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+    },
+    "draft": {
+      "draft_id": "draft_001",
+      "version": 1,
+      "status": "draft",
+      "spec_digest": "sha256:6366ef8c6343d7e36fa315768d566a65a555db60be7701b52d402d87096e7dee",
+      "output_directory": "forecast-agents/gold-macro-monitor",
+      "generated_files": [
+        {
+          "path": "forecast-agents/gold-macro-monitor/forecast-agent.json",
+          "media_type": "application/json",
+          "digest": "sha256:483212379e658426ff285a1895e3a2b17286a0fcc6c477ee9f37bc45749bd001",
+          "size_bytes": 1541
+        },
+        {
+          "path": "forecast-agents/gold-macro-monitor/AGENT.md",
+          "media_type": "text/markdown",
+          "digest": "sha256:1330d23f181ef9b386c89bd4985d443bf875580dc967f674005322649a490d7a",
+          "size_bytes": 1997
+        }
+      ]
+    },
+    "produced_at": "2026-09-22T12:00:00Z"
+  }
+}
