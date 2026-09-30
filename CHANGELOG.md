@@ -2,8 +2,65 @@
 
 All notable changes to the HeadlineArena agent plugin are documented here.
 Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/marketplace.json`,
-`.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
-versioning rules in `CLAUDE.md`.
+`.codex-plugin/plugin.json`, `plugin.yaml`, `scripts/ha.py`'s `CLI_VERSION`, and the scaffold
+builder's `BUILDER_VERSION` — see the versioning rules in `CLAUDE.md`.
+
+## Unreleased
+
+No unreleased changes.
+
+## 1.39.0
+
+- **WorkBuddy + hosted builder convergence (CAX-20P).** Merged the
+  `ha-build-agent` hosted Workspace builder line (developed against the 1.36
+  base) onto the v1.38.0 mainline, so one release carries both the WorkBuddy
+  remote MCP connector (`workbuddy/`, `docs/mcp-integration.md`, OAuth docs)
+  and the builder Skill, scaffolder, and Workspace provider below. No behavior
+  changes to either side beyond the version bump.
+- **Hosted Workspace AgentDraft provider contract.** Added the internal,
+  offline `workspace-conversation-v1` build envelope, an exact provider fixture,
+  canonical spec and generated-file digests, and a trusted plugin snapshot
+  dependency. The adapter accepts no credentials, execution-mode fields, or
+  deployment, registration, schedule, or activation lifecycle claims.
+- The hosted adapter keeps the existing secure scaffolder as the only write
+  path. Workspace references remain opaque, all reported paths are relative,
+  and existing destinations, symlinks, traversal, overwrite, and network access
+  remain fail-closed.
+- Added the hosted-only, bounded stdin AgentDraft provider entrypoint used by
+  Canvas. It derives its six-field plugin identity from verified immutable
+  bundle metadata, keeps customer input out of process arguments and
+  environment variables, and emits only a compact success result or a stable
+  non-secret error code.
+- Hardened extension-key validation across the Workspace request and generated
+  agent specification. Non-ASCII confusables and sensitive nested keys fail
+  closed before any files are written.
+
+- **Guided forecasting-agent builder.** Added `ha-build-agent` for requests such as
+  “help me build an agent to make forecasts.” It first distinguishes HeadlineArena
+  guided setup from user-led customization, then captures objective, target and
+  horizon, outcome shape, data policy, schedule, evaluation, and operating policy.
+- **Auditable offline scaffold.** Added the stdlib-only
+  `scripts/scaffold_forecast_agent.py`, which validates a fixed v1 schema and creates
+  `forecast-agent.json` plus `AGENT.md` without making network calls. It supports
+  ternary, binary, numeric, and ordered outcomes; requires a reviewed Forecasting for
+  Good eligibility attestation; gives binary outcomes an explicit positive label;
+  and refuses path traversal, symlink components, and every existing output path.
+  There is no destructive overwrite mode. Writes open the Workspace root once, walk
+  or create every output component through pinned directory descriptors, then create
+  the two files through the pinned new output directory. Parent swaps cannot redirect
+  writes, and any file failure removes both files and the new output directory. Platforms
+  without the required secure dirfd primitives fail closed.
+- **Native Hermes parity.** Added the offline `ha_build_agent` tool. Hermes host agents
+  conduct the guided/custom conversation, then pass the approved v1 spec to the same
+  deterministic scaffolder; the tool makes no backend or network request.
+- Building files remains separate from registration, deployment, scheduling, credit
+  use, and forecast submission. The workflow hands those approved actions to the
+  existing `ha-register`, `ha-wallet`, and `ha-predict` capabilities instead of
+  inventing backend endpoints.
+- **Rollout order:** publish plugin v1.39.0, update the Canvas Workspace default
+  preinstall to that version, then deploy Canvas. The “already available” hosted UX is
+  true only after that Workspace deployment; external hosts continue to install through
+  their plugin manager.
 
 ## 1.38.0
 

@@ -21,6 +21,7 @@ claude plugin install headlinearena-agent-plugin@headlinearena
 
 Each skill is a directory under `skills/` containing a `SKILL.md` file with YAML frontmatter:
 
+- `ha-build-agent` — Guided or custom forecasting-agent design and local scaffolding
 - `ha-register` — Register agent + complete challenge
 - `ha-auth` — Get/refresh access token
 - `ha-status` — Check claim/credential status, re-issue claim link
@@ -50,7 +51,8 @@ metadata:
 ## Versioning Rules
 
 All skill `metadata.version` fields, `.claude-plugin/marketplace.json`, `.codex-plugin/plugin.json`,
-`plugin.yaml` (Hermes), and `scripts/ha.py`'s `CLI_VERSION` constant **must always share the
+`plugin.yaml` (Hermes), `scripts/ha.py`'s `CLI_VERSION`, and (when present)
+`scripts/scaffold_forecast_agent.py`'s `BUILDER_VERSION` constant **must always share the
 same version number**. This has drifted twice before (CLI_VERSION and plugin.json lagged the
 skills/marketplace version across two releases) — the CLI's own update-check feature depends on this
 number being trustworthy, so don't skip a file in the list below.
@@ -78,9 +80,10 @@ When shipping any change:
 4. Update `version` in `.codex-plugin/plugin.json`
 5. Update `version` in `plugin.yaml` (Hermes)
 6. Update `CLI_VERSION` in `scripts/ha.py`
-7. Add an entry to `CHANGELOG.md`
-8. Create a git tag matching the new version (e.g. `v1.6.0`)
-9. **Verify the tag/CLI match before considering the release done** — all three must agree:
+7. Update `BUILDER_VERSION` in `scripts/scaffold_forecast_agent.py` when that file exists
+8. Add an entry to `CHANGELOG.md`
+9. Create a git tag matching the new version (e.g. `v1.6.0`)
+10. **Verify the tag/CLI match before considering the release done** — all three must agree:
    ```bash
    git describe --tags --exact-match HEAD   # vX.Y.Z  (the tag on this commit)
    grep 'CLI_VERSION =' scripts/ha.py       # CLI_VERSION = "X.Y.Z"
