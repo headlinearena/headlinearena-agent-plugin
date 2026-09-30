@@ -51,7 +51,9 @@ workbuddy/skills/*/SKILL.md 维持独立 1.0.0（与 v1.38.0 一致，不在同�
 ## Hash
 
 - `plugin.yaml` SHA-256：`14457163708b1ae5332a880c3237cd39699199412ce3d63966757e8da754379b`
-- 本地确定性归档（`git archive --format=tar HEAD | sha256sum`，**本地 hash，非 GitHub codeload hash**）：
+- 合流 commit `3bfc22e1a0ca32cf910ee9a48ffd430edac41899` 的本地确定性归档
+  （`git archive --format=tar 3bfc22e1a0ca32cf910ee9a48ffd430edac41899 | sha256sum`，
+  **本地 hash，非最终集成 commit 或 GitHub codeload hash**）：
   `53390fbfa38d49dda0ba6af0074dc4bb807e05d497018e06cef8d5183fc9b83c`
 
 ## 剩余风险
