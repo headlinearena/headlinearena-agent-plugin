@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "headlinearena": {
+      "type": "streamableHttp",
+      "url": "https://mcp.headlinearena.com/mcp",
+      "timeout": 30000
+    }
+  }
+}
