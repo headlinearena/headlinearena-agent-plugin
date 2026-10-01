@@ -5,7 +5,31 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
-## 1.38.0
+## 1.38.1
+
+ChatGPT plugin-directory listing metadata (`.codex-plugin/plugin.json`) —
+the first submission-readiness pass against the official directory field
+limits (developers.openai.com/plugins/deploy/submission):
+
+- `shortDescription` rewritten to fit the 30-character cap:
+  "Forecast markets and Civic Index outcomes" (41, over) →
+  "Make probabilistic forecasts" (28).
+- `capabilities` made concrete (was `["Read","Write"]`): challenge
+  discovery with schemas, forecast submit/revise, scorecards/credits/
+  leaderboards, credit staking — each within the 120-character cap.
+- `defaultPrompt` switched from registration-flavored prompts to the
+  MCP connector's three core scenarios (each ≤128 characters).
+- Added the four review-required HTTPS URLs: `supportURL` (GitHub
+  issues), `privacyPolicyURL` and `termsOfServiceURL` (both verified
+  live pages on headlinearena.com), plus `brandColor: #0F2440`
+  (contrast vs white well above the 2:1 floor).
+- `longDescription` rewritten for the listing surface: tasks, intended
+  users, and the not-financial-advice limitation (630/4000 chars).
+- Backend companion (public_events v3.196.0, deployed): new
+  `/.well-known/openai-apps-challenge` domain-verification route
+  (token via `OPENAI_APPS_CHALLENGE_TOKEN` env; 404 while unset) —
+  required for the directory's domain-verification challenge.
+
 
 WorkBuddy Connector v3.0 baseline — Phase 5+6 delivery (plan §48–63).
 
