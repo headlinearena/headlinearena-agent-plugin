@@ -48,6 +48,7 @@ from ha_client.contracts import (
     civic_asset_from_target_key as _civic_asset_from_target_key,
     civic_from_contract_entry as _civic_from_contract_entry,
     civic_from_legacy_human_forecast as _civic_from_legacy_human_forecast,
+    forecast_submit_hint,
     legacy_macro_as_civic as _legacy_macro_as_civic,
     parse_contract_response,
 )
@@ -71,7 +72,7 @@ from ha_client.legacy import (
     quoted_scope_key,
 )
 
-CLI_VERSION = "1.38.1"
+CLI_VERSION = "1.38.2"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -937,7 +938,8 @@ def cmd_status(args):
             info["credits"] = "n/a — missing credits:read (run: ha.py scope --add credits:read)"
         s, r = authed("GET", "/agent/scopes")  # OAuth permission scopes granted
         if s == 200:
-            info["granted_scopes"] = r.get("scopes", r) if isinstance(r, dict) else r
+            normalized = _granted_scope_list(r)
+            info["granted_scopes"] = normalized if normalized is not None else r
     # Guidance lives in info["next_steps"] (stdout JSON) so non-CLI hosts like
     # Hermes — which only see stdout, never stderr — also receive it. note()
     # mirrors it for CLI users. Reliable on every call (not a one-shot): a
@@ -964,14 +966,41 @@ def cmd_status(args):
 def _credits_look_unfunded(credits):
     """True if this agent's own credit balance looks empty/unknown, so wallet
     funding guidance is worth showing. `credits` is whatever
-    /agent/credits/balance returned (a dict, an 'n/a' string, or None)."""
+    /agent/credits/balance returned (a dict, an 'n/a' string, or None).
+
+    Frozen balance counts as funded: it is credit already staked on open
+    forecasts. An agent that moved its whole wallet onto the market
+    (available 0, frozen > 0) is the opposite of unfunded — telling it to
+    set up its wallet just produces a false nag on every status call."""
     if isinstance(credits, dict):
-        bal = credits.get("available_balance", credits.get("balance", 0))
-        try:
-            return float(bal or 0) <= 0
-        except (TypeError, ValueError):
-            return True
+        def _positive(key):
+            try:
+                return float(credits.get(key) or 0) > 0
+            except (TypeError, ValueError):
+                return False
+        if _positive("available_balance") or _positive("balance"):
+            return False
+        if _positive("frozen_balance"):
+            return False
+        return True
     return True  # missing or 'n/a' — guide rather than stay silent
+
+
+def _granted_scope_list(granted_scopes):
+    """Normalize a /agent/scopes payload into a list of scope strings.
+
+    Returns None when the shape is unrecognized. Callers MUST treat None as
+    "unknown" — never as "the scope is missing": an endpoint shape change or
+    a failed fetch must not turn into advice to self-grant a scope the agent
+    already holds."""
+    if isinstance(granted_scopes, list):
+        return granted_scopes
+    if isinstance(granted_scopes, dict):
+        for key in ("scopes", "granted_scopes", "items"):
+            value = granted_scopes.get(key)
+            if isinstance(value, list):
+                return value
+    return None
 
 
 def _wallet_setup_guidance(granted_scopes):
@@ -979,8 +1008,16 @@ def _wallet_setup_guidance(granted_scopes):
     Advisory only — does NOT auto-grant anything (wallet:manage moves credit,
     so it must be an explicit opt-in the agent/owner chooses). If the agent
     already holds wallet:manage, reads the owner's balance and suggests
-    owner-topup; otherwise just points at the self-grant. Never raises."""
-    have = isinstance(granted_scopes, list) and "wallet:manage" in granted_scopes
+    owner-topup; otherwise just points at the self-grant. An unrecognized
+    scope-payload shape gets a neutral check-first message instead of wrongly
+    advising a self-grant the agent may already hold. Never raises."""
+    scopes = _granted_scope_list(granted_scopes)
+    if scopes is None:
+        return ("Wallet funding is opt-in. Check whether you already hold "
+                "`wallet:manage` (`ha.py scope --list`); if so use "
+                "`ha.py owner-balance` / `ha.py owner-topup --amount <N>`, "
+                "otherwise self-grant it first (`ha.py scope --add wallet:manage`).")
+    have = "wallet:manage" in scopes
     if not have:
         return ("Wallet funding is opt-in: self-grant `wallet:manage` "
                 "(`ha.py scope --add wallet:manage`), then `ha.py owner-balance` "
@@ -1343,10 +1380,8 @@ def cmd_challenges(args):
                 continue
             c = dict(c)
             c["track"] = "civic_forecast"
-            shape = c.get("outcome_shape")
             c["submit_hint"] = (
-                _FORECAST_SUBMIT_HINT.get(shape, "forecast <id> --amount <n>")
-                + " (needs credits:stake)"
+                forecast_submit_hint(c) + " (needs credits:stake)"
             )
             merged.append(c)
     payload = {

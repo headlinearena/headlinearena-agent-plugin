@@ -22,6 +22,32 @@ FORECAST_SUBMIT_HINTS = {
 }
 
 
+def forecast_submit_hint(item):
+    """Schema-aware submit hint for one Civic discovery item.
+
+    The shape-level table above is the default. One real exception: a
+    numeric_distribution target whose frozen schema advertises
+    input_encoding="empirical_samples" (bounded support) REJECTS
+    --mean/--std server-side ("Frozen numeric support requires exactly
+    samples"); its hint must lead with --samples or an agent following the
+    hint 400s at submit time."""
+    item = item if isinstance(item, dict) else {}
+    hint = FORECAST_SUBMIT_HINTS.get(
+        item.get("outcome_shape"), "forecast <id> --amount <n>"
+    )
+    schema = item.get("forecast_schema")
+    if (
+        item.get("outcome_shape") == "numeric_distribution"
+        and isinstance(schema, dict)
+        and schema.get("input_encoding") == "empirical_samples"
+    ):
+        hint = (
+            "forecast <id> --samples @samples.json --amount <n>  "
+            "(bounded support: raw samples required, --mean/--std rejected)"
+        )
+    return hint
+
+
 def civic_asset_from_target_key(target_key):
     # "HF_US_CPI" -> "CPI"; drop the leading family tag and the region code.
     parts = (target_key or "").split("_")

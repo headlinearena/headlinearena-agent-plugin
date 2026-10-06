@@ -5,6 +5,28 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.38.2
+
+CLI fixes from a full-coverage live forecasting run (2026-10-05/06,
+11 financial + 47 civic forecasts):
+
+- Schema-aware civic `submit_hint`: a `numeric_distribution` target whose
+  frozen schema advertises `input_encoding: "empirical_samples"` (bounded
+  support) now shows a `--samples`-first hint. The shape-level default
+  (`--mean <n> --std <n>`) is rejected server-side for these targets
+  ("Frozen numeric support requires exactly samples") — an agent following
+  the old hint 400'd at submit time on all 13 bounded CN targets.
+- `status` wallet nag no longer fires for a fully-staked agent:
+  `frozen_balance` now counts as funded (an agent that moved its whole
+  wallet onto open forecasts — available 0, frozen > 0 — is the opposite
+  of unfunded).
+- `status` granted-scopes handling: an unrecognized `/agent/scopes`
+  payload shape no longer gets reported as "wallet:manage missing" with
+  advice to self-grant a scope the agent may already hold. Unknown shapes
+  produce a neutral check-first message (`scope --list`); known dict
+  shapes (`scopes`/`granted_scopes`/`items` keys) are unwrapped to a list.
+
+
 ## 1.38.1
 
 ChatGPT plugin-directory listing metadata (`.codex-plugin/plugin.json`) —

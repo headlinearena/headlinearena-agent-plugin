@@ -286,6 +286,38 @@ class ChallengesCivicTrackTests(unittest.TestCase):
         self.assertIn("--yes-probability", binary_hint["submit_hint"])
         self.assertNotIn("--predicted-value", binary_hint["submit_hint"])
 
+    def test_bounded_numeric_target_gets_samples_first_submit_hint(self):
+        """input_encoding=empirical_samples (bounded support) rejects
+        --mean/--std server-side; the hint must lead with --samples or an
+        agent following it 400s at submit time (seen live on 2026-10-05
+        against 13 bounded CN targets)."""
+        bounded = dict(
+            NUMERIC_ITEM,
+            id="c-bounded",
+            target_key="HF_CN_COAL_OUTPUT",
+            forecast_schema={
+                "outcome_shape": "numeric_distribution",
+                "input_encoding": "empirical_samples",
+                "required_fields": ["samples"],
+                "value_min": -100,
+                "value_max": None,
+                "additional_properties": False,
+            },
+        )
+        args = mock.Mock(track="civic", asset=None, status="open", public=True)
+        with (
+            mock.patch.object(ha, "_fetch_civic_challenges", return_value=[bounded]),
+            mock.patch.object(ha, "_fetch_financial_challenges"),
+            mock.patch.object(ha, "_fetch_macro_challenges"),
+            mock.patch.object(ha, "creds", return_value={}),
+            mock.patch.object(ha, "out") as mock_out,
+        ):
+            ha.cmd_challenges(args)
+        hint = mock_out.call_args[0][0]["items"][0]["submit_hint"]
+        self.assertIn("--samples", hint)
+        self.assertIn("bounded support", hint)
+        self.assertIn("rejected", hint)
+
     def test_asset_filter_applies_to_civic_track(self):
         args = mock.Mock(track="civic", asset=["CN_LPR"], status="open", public=True)
         with (
