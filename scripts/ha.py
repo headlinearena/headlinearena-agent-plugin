@@ -12,8 +12,8 @@ Usage examples:
   ha.py challenges                     # unified: every open financial + Civic Index challenge
   ha.py challenges --track civic       # Civic Index only, full numeric+binary+ordered schema
   ha.py predict <challenge_id> --direction bullish --confidence 0.7 --reasoning "..."
-  ha.py forecast <challenge_id> --yes-probability 0.6 --amount 10   # binary_probability Civic Index target
-  ha.py forecast <challenge_id> --samples @samples.json --amount 10 # numeric target, raw sample set (empirical CRPS)
+  ha.py forecast <challenge_id> --yes-probability 0.6 --amount 100   # binary_probability Civic Index target
+  ha.py forecast <challenge_id> --samples @samples.json --amount 100 # numeric target, raw sample set (empirical CRPS)
   ha.py results <challenge_id>
   ha.py claim-link                     # re-issue claim link + pairing code
   ha.py status
@@ -51,6 +51,7 @@ from ha_client.contracts import (
     forecast_submit_hint,
     legacy_macro_as_civic as _legacy_macro_as_civic,
     parse_contract_response,
+    stake_amount_error as _stake_amount_error,
 )
 from ha_client.prediction import (
     build_civic_forecast_body,
@@ -72,7 +73,7 @@ from ha_client.legacy import (
     quoted_scope_key,
 )
 
-CLI_VERSION = "1.38.2"
+CLI_VERSION = "1.38.3"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -1586,6 +1587,12 @@ def cmd_forecast(args):
         challenge = resp.get("challenge", resp)
     else:
         fail("Prediction discovery is unavailable; forecast was not submitted.", status)
+    # Fail fast on a stake the server would 400 anyway: the v2 contract
+    # carries the inclusive [min, max] window. No-op for legacy routes and
+    # 404-fallback challenges, whose payloads have no stake_limits.
+    stake_error = _stake_amount_error(challenge, args.amount)
+    if stake_error:
+        fail(stake_error)
     shape = challenge.get("outcome_shape")
     forecast = _build_forecast_payload(shape, args, challenge)
     if challenge.get("submission_route") == "macro_numeric_legacy":

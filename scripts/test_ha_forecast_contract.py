@@ -11,6 +11,8 @@ Covers:
   `--track macro` is only a deprecated alias.
 - `forecast`: payload construction per outcome_shape,
   --bin/--bin-label rejection, ordered-category validation.
+- contract `stake_limits`: local --amount pre-validation in `forecast` and
+  bounds advertised in discovery submit hints.
 - `macro-predict`'s new shape-mismatch redirect hint.
 
 Stdlib-only (unittest + unittest.mock). Run:
@@ -94,6 +96,7 @@ def contract_entry(item):
             "participation_contract": "forecast_and_stake",
             "submission_atomic": True,
             "required_scopes": ["prediction:submit", "credits:stake"],
+            "stake_limits": item.get("stake_limits"),
         },
         "current_challenge": {
             "challenge_id": item["id"],
@@ -601,6 +604,92 @@ class CmdForecastTests(unittest.TestCase):
         self.assertEqual(
             authed.call_args[0][1], "/eval/macro/challenges/c-numeric/predict"
         )
+
+
+STAKED_NUMERIC = dict(NUMERIC_ITEM, stake_limits={"min": 50.0, "max": 1000.0})
+
+
+class StakeLimitsTests(unittest.TestCase):
+    """v1.38.3: prediction-contract-v2 carries the inclusive stake window the
+    server enforces at submit time (live: human_forecast = 50-1000, financial
+    families = null). `forecast` mirrors that check locally so a bad --amount
+    fails before any write, and discovery hints advertise the bounds. Absent
+    or malformed limits never block — the server stays the authority."""
+
+    def test_projection_carries_stake_limits(self):
+        item = ha._civic_from_contract_entry(contract_entry(STAKED_NUMERIC))
+        self.assertEqual(item["stake_limits"], {"min": 50.0, "max": 1000.0})
+
+    def test_amount_below_min_fails_before_submit(self):
+        with (
+            mock.patch.object(
+                ha, "_fetch_prediction_contract_entries",
+                return_value=(200, [contract_entry(STAKED_NUMERIC)]),
+            ),
+            mock.patch.object(ha, "authed") as authed,
+        ):
+            with self.assertRaises(ha.HAFailure) as ctx:
+                ha.cmd_forecast(ForecastArgs(
+                    challenge_id="c-numeric", mean=3.4, std=0.15, amount=10,
+                ))
+        authed.assert_not_called()
+        self.assertIn("min 50", str(ctx.exception))
+
+    def test_amount_above_max_fails_before_submit(self):
+        with (
+            mock.patch.object(
+                ha, "_fetch_prediction_contract_entries",
+                return_value=(200, [contract_entry(STAKED_NUMERIC)]),
+            ),
+            mock.patch.object(ha, "authed") as authed,
+        ):
+            with self.assertRaises(ha.HAFailure) as ctx:
+                ha.cmd_forecast(ForecastArgs(
+                    challenge_id="c-numeric", mean=3.4, std=0.15, amount=2000,
+                ))
+        authed.assert_not_called()
+        self.assertIn("max 1000", str(ctx.exception))
+
+    def test_amount_at_lower_bound_submits(self):
+        with (
+            mock.patch.object(
+                ha, "_fetch_prediction_contract_entries",
+                return_value=(200, [contract_entry(STAKED_NUMERIC)]),
+            ),
+            mock.patch.object(ha, "authed", return_value=(200, {"ok": True})) as authed,
+            mock.patch.object(ha, "out"),
+        ):
+            ha.cmd_forecast(ForecastArgs(
+                challenge_id="c-numeric", mean=3.4, std=0.15, amount=50,
+            ))
+        self.assertEqual(authed.call_count, 1)
+        self.assertEqual(authed.call_args[0][2]["amount"], 50)
+
+    def test_malformed_limits_do_not_block_submission(self):
+        wonky = dict(NUMERIC_ITEM, stake_limits={"min": "lots", "max": None})
+        with (
+            mock.patch.object(
+                ha, "_fetch_prediction_contract_entries",
+                return_value=(200, [contract_entry(wonky)]),
+            ),
+            mock.patch.object(ha, "authed", return_value=(200, {"ok": True})) as authed,
+            mock.patch.object(ha, "out"),
+        ):
+            ha.cmd_forecast(ForecastArgs(
+                challenge_id="c-numeric", mean=3.4, std=0.15, amount=10,
+            ))
+        self.assertEqual(authed.call_count, 1)
+
+    def test_legacy_macro_projection_has_no_stake_limits(self):
+        item = ha._legacy_macro_as_civic({"id": "legacy-cpi", "asset": "CPI"})
+        self.assertIsNone(ha._stake_amount_error(item, 10))
+
+    def test_submit_hint_advertises_bounds(self):
+        hint = ha.forecast_submit_hint(STAKED_NUMERIC)
+        self.assertIn("(stake 50-1000)", hint)
+
+    def test_submit_hint_without_limits_has_no_bounds_note(self):
+        self.assertNotIn("stake", ha.forecast_submit_hint(NUMERIC_ITEM))
 
 
 class MacroPredictShapeMismatchHintTests(unittest.TestCase):

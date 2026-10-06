@@ -45,7 +45,50 @@ def forecast_submit_hint(item):
             "forecast <id> --samples @samples.json --amount <n>  "
             "(bounded support: raw samples required, --mean/--std rejected)"
         )
+    hint += _stake_bounds_note(item)
     return hint
+
+
+def _stake_bounds_note(item):
+    """Bounds suffix for submit hints, e.g. " (stake 50-1000)". Empty string
+    when stake_limits is absent or malformed — a hint must never crash or
+    mislead because a backend omitted the field."""
+    limits = item.get("stake_limits") if isinstance(item, dict) else None
+    if not isinstance(limits, dict):
+        return ""
+    try:
+        return f"  (stake {float(limits['min']):g}-{float(limits['max']):g})"
+    except (KeyError, TypeError, ValueError):
+        return ""
+
+
+def stake_amount_error(item, amount):
+    """Local --amount pre-check against the contract's stake_limits.
+
+    Returns a failure message when the amount falls outside the inclusive
+    [min, max] window, else None. None is also returned when the limits are
+    absent/malformed or the amount is not a finite number — the server
+    re-validates every submit and stays the authority, so bad contract data
+    must degrade to "let the server answer", never silently block a valid
+    stake."""
+    limits = item.get("stake_limits") if isinstance(item, dict) else None
+    if not isinstance(limits, dict):
+        return None
+    try:
+        low = float(limits["min"])
+        high = float(limits["max"])
+        value = float(amount)
+    except (KeyError, TypeError, ValueError):
+        return None
+    if value != value or value in (float("inf"), float("-inf")):  # NaN/inf
+        return None
+    if not low <= value <= high:
+        return (
+            f"Stake amount {value:g} is outside this challenge's stake limits "
+            f"(min {low:g}, max {high:g}); forecast was not submitted. "
+            f"Re-run with --amount between {low:g} and {high:g}."
+        )
+    return None
 
 
 def civic_asset_from_target_key(target_key):
@@ -115,6 +158,11 @@ def civic_from_contract_entry(entry):
         "execution_family": contract.get("execution_family"),
         "submission_route": contract.get("submission_route"),
         "compatibility_status": contract.get("compatibility_status"),
+        # Inclusive [min, max] credit window the server enforces on every
+        # forecast submit (None on families without a staking contract).
+        # Carried through so `forecast` can fail fast locally and discovery
+        # hints can advertise the bounds; never enforced here.
+        "stake_limits": contract.get("stake_limits"),
     }
 
 

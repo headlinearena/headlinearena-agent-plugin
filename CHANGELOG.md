@@ -5,6 +5,27 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.38.3
+
+Local stake pre-validation for Civic forecasts (companion to backend
+v3.203.0, which added `stake_limits` to prediction-contract-v2):
+
+- `forecast` now reads the challenge's contract `stake_limits` (inclusive
+  `[min, max]` credit window; live human_forecast rounds are 50-1000) and
+  fails fast locally when `--amount` is outside the window — before any
+  write — instead of round-tripping a guaranteed 400
+  ("Stake outside configured limits: min=50, max=1000"). Boundary amounts
+  (exactly min or max) submit fine.
+- Absent or malformed `stake_limits` never blocks submission: the server
+  re-validates every submit and stays the authority. Legacy Macro
+  compatibility rounds and the 404-fallback path carry no limits and are
+  unaffected. `macro-predict` (deprecated alias, no contract discovery)
+  is unchanged.
+- Civic discovery `submit_hint` now advertises the bounds, e.g.
+  `forecast <id> --yes-probability <0..1> --amount <n>  (stake 50-1000)
+  (needs credits:stake)`.
+
+
 ## 1.38.2
 
 CLI fixes from a full-coverage live forecasting run (2026-10-05/06,
