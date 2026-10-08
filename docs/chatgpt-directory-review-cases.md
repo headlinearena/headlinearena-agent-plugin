@@ -124,8 +124,12 @@ never an invented answer.
 The portal issues a challenge token; serve it at the well-known path on
 the MCP hostname (`mcp.headlinearena.com`) or an eligible parent domain:
 
-1. Portal → **MCPs** → select the server → **Connect** → note the
-   challenge token.
+1. Portal is **platform.openai.com/plugins** (not the developers.openai.com
+   docs surface): **Upload new or existing plugin** → pick the verified
+   Developer identity → **Upload plugin** (the submission ZIP). After
+   validation the plugin detail page opens — only then: **MCPs** → select
+   the server → **Connect** → note the challenge token in the
+   "Connect MCP server" drawer.
 2. Set it in the api service environment:
    `OPENAI_APPS_CHALLENGE_TOKEN=<token>` (Zeabur env var; empty = the
    route 404s).

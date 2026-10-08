@@ -1,7 +1,6 @@
 {
   "mcpServers": {
     "headlinearena": {
-      "type": "http",
       "url": "https://mcp.headlinearena.com/mcp"
     }
   }

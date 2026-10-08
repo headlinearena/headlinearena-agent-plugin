@@ -1,7 +1,8 @@
 # MCP Integration — Remote MCP Server
 
-> Status: **Implemented** — backend `feat/unified-prediction-core`, §61–63 test
-> suites green; production deployment pending.
+> Status: **Live in production** — `https://mcp.headlinearena.com/mcp`
+> (stateless streamable HTTP, OAuth 2.1 with PKCE + dynamic client
+> registration).
 > Source plan: [docs/plans/workbuddy-connector-v3.md](plans/workbuddy-connector-v3.md) §29–47.
 
 How any MCP host (WorkBuddy, or any client speaking streamable HTTP) connects

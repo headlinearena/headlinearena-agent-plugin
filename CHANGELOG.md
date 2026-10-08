@@ -5,6 +5,30 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `.grok-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.41.0
+
+ChatGPT plugin-directory submission package (target: the OpenAI plugins
+directory, uploaded at platform.openai.com → Plugins):
+
+- `.codex-plugin/plugin.json` now declares the hosted MCP server
+  (`"mcpServers": "./.mcp.json"`). The directory requires MCP servers to
+  ship in the **initial** ZIP — a skills-only plugin cannot add one later,
+  so the v1.38.1 metadata alone would have dead-ended the submission.
+  Also adds listing icons (`composerIcon`/`logo` → `assets/logo.svg`,
+  square 160×160 viewBox), ZIP-imported review materials
+  (`extensions.com.openai.review`: 5 positive + 3 negative test cases
+  transcribed from `docs/chatgpt-directory-review-cases.md`, commerce
+  declaration), and publication metadata (`release_notes` + translated
+  listing text for zh-CN/zh-TW/ar/es/fr/de/ko/ja). Root `homepage` added;
+  `trading` keyword replaced with `forecasting`.
+- `.mcp.json` trimmed to the Codex manifest shape (server name + URL only,
+  matching the official example).
+- Submission order: upload ZIP → fix Metadata & Skills findings → MCPs →
+  Connect → domain-verification challenge token (portal shows it in the
+  Connect drawer) → tool scan → Review details (reviewer credentials via
+  the secure dashboard form, NEVER inside the ZIP) → Submit for review.
+  Publishing is a separate deliberate click after approval.
+
 ## 1.40.0
 
 Grok Build plugin-marketplace listing support (target: the official xAI
