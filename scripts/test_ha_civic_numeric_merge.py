@@ -69,6 +69,7 @@ class ChallengesMergeTests(unittest.TestCase):
         args = mock.Mock(track="macro", asset=None, status=None, public=True)
         with (
             mock.patch.object(ha, "_fetch_civic_challenges", return_value=[civic_item]),
+            mock.patch.object(ha, "_fetch_price_event_challenges", return_value=[]),
             mock.patch.object(ha, "creds", return_value={}),
             mock.patch.object(ha, "out") as mock_out,
         ):
@@ -83,6 +84,7 @@ class ChallengesMergeTests(unittest.TestCase):
         args = mock.Mock(track="macro", asset=["PPI"], status=None, public=True)
         with (
             mock.patch.object(ha, "_fetch_civic_challenges", return_value=[civic_item]),
+            mock.patch.object(ha, "_fetch_price_event_challenges", return_value=[]),
             mock.patch.object(ha, "creds", return_value={}),
             mock.patch.object(ha, "out") as mock_out,
         ):
@@ -195,6 +197,7 @@ class FinancialTrackUnaffectedTests(unittest.TestCase):
         with (
             mock.patch.object(ha, "_fetch_financial_challenges", return_value=[]),
             mock.patch.object(ha, "_fetch_civic_numeric_challenges") as civic_fetch,
+            mock.patch.object(ha, "_fetch_price_event_challenges", return_value=[]),
             mock.patch.object(ha, "creds", return_value={}),
             mock.patch.object(ha, "out"),
         ):

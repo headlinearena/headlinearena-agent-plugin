@@ -214,3 +214,39 @@ def civic_from_legacy_human_forecast(item):
         "bins": item.get("bins"),
         "submission_route": "human_forecast",
     }
+
+
+def price_event_from_contract_entry(entry):
+    """Project open score-only price events without pretending they are Civic stakes."""
+    if not isinstance(entry, dict):
+        return None
+    contract, challenge = entry.get("contract"), entry.get("current_challenge")
+    if not isinstance(contract, dict) or not isinstance(challenge, dict):
+        return None
+    schema = contract.get("forecast_schema")
+    shape = contract.get("outcome_shape")
+    encoding = {"binary_probability": "direction_confidence", "numeric_distribution": "normal_mean_std"}
+    if (contract.get("api_contract_version") != "prediction-contract-v2"
+            or contract.get("site") != "global"
+            or contract.get("execution_family") != "price_event"
+            or contract.get("submission_route") != "price_event"
+            or contract.get("participation_contract") != "score_only"
+            or contract.get("submission_atomic") is not True
+            or contract.get("required_scopes") != ["prediction:submit"]
+            or not isinstance(schema, dict)
+            or shape not in encoding or schema.get("input_encoding") != encoding[shape]
+            or challenge.get("status") != "open" or not challenge.get("challenge_id")):
+        return None
+    hint = ('price-predict <id> --yes-probability <0..1>' if shape == "binary_probability"
+            else 'price-predict <id> --mean <n> --std <n>')
+    return {
+        "id": challenge["challenge_id"], "asset": contract.get("scope_key"),
+        "scope_key": contract.get("scope_key"), "target_key": contract.get("target_key"),
+        "challenge_type": "price_event", "execution_family": "price_event",
+        "submission_route": "price_event", "status": challenge["status"],
+        "question": challenge.get("question"), "deadline": challenge.get("deadline"),
+        "detail_path": challenge.get("detail_path"), "outcome_shape": shape,
+        "forecast_schema": schema, "participation_contract": "score_only",
+        "required_scopes": contract["required_scopes"],
+        "submit_hint": hint + ' --reasoning "..." (score only; no --amount)',
+    }

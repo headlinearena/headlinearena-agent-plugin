@@ -274,6 +274,7 @@ class ChallengesCivicTrackTests(unittest.TestCase):
             ]),
             mock.patch.object(ha, "_fetch_financial_challenges") as fin_fetch,
             mock.patch.object(ha, "_fetch_macro_challenges") as macro_fetch,
+            mock.patch.object(ha, "_fetch_price_event_challenges", return_value=[]),
             mock.patch.object(ha, "creds", return_value={}),
             mock.patch.object(ha, "out") as mock_out,
         ):
@@ -312,6 +313,7 @@ class ChallengesCivicTrackTests(unittest.TestCase):
             mock.patch.object(ha, "_fetch_civic_challenges", return_value=[bounded]),
             mock.patch.object(ha, "_fetch_financial_challenges"),
             mock.patch.object(ha, "_fetch_macro_challenges"),
+            mock.patch.object(ha, "_fetch_price_event_challenges", return_value=[]),
             mock.patch.object(ha, "creds", return_value={}),
             mock.patch.object(ha, "out") as mock_out,
         ):
@@ -327,6 +329,7 @@ class ChallengesCivicTrackTests(unittest.TestCase):
             mock.patch.object(ha, "_fetch_civic_challenges", return_value=[
                 dict(NUMERIC_ITEM, asset="CPI"), dict(BINARY_ITEM, asset="CN_LPR"),
             ]),
+            mock.patch.object(ha, "_fetch_price_event_challenges", return_value=[]),
             mock.patch.object(ha, "creds", return_value={}),
             mock.patch.object(ha, "out") as mock_out,
         ):

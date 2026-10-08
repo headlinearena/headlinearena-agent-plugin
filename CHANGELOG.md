@@ -5,6 +5,22 @@ Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/mar
 `.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
 
+## 1.39.0
+
+Complete public challenge discovery and readable frozen futures identities:
+
+- `challenges --public` includes open `price_event` contracts alongside financial
+  and Civic forecasts; `--track price-event` and `--asset BTC ETH` can narrow them.
+  Public financial discovery reads every API page instead of only the first 20.
+- New `price-predict` follows the advertised binary (`--yes-probability`) or
+  numeric (`--mean`/`--std`) shape and the price-event write route. These rounds
+  are score-only: no credit stake and no Civic `forecast` route. Invalid shapes,
+  nonfinite inputs, unavailable discovery, and closed rounds fail before writing.
+- Futures expose frozen `contract_symbol`, `contract_month` (YYYY-MM), and a
+  readable `contract_label`, supplied by the companion platform fix. Contract
+  months refer to delivery, not the last trading date. Missing months remain
+  unknown rather than being filled from today's live main contract.
+
 ## 1.38.3
 
 Local stake pre-validation for Civic forecasts (companion to backend

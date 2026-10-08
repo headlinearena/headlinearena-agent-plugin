@@ -51,6 +51,7 @@ from ha_client.contracts import (
     forecast_submit_hint,
     legacy_macro_as_civic as _legacy_macro_as_civic,
     parse_contract_response,
+    price_event_from_contract_entry,
     stake_amount_error as _stake_amount_error,
 )
 from ha_client.prediction import (
@@ -73,7 +74,7 @@ from ha_client.legacy import (
     quoted_scope_key,
 )
 
-CLI_VERSION = "1.38.3"
+CLI_VERSION = "1.39.0"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -1169,9 +1170,17 @@ def cmd_scope(args):
 
 
 def _public_challenges(status_filter="open"):
-    status, resp = http("GET", api(f"/eval/challenges?status={status_filter}"))
-    expect(status, resp)
-    return resp
+    items, offset = [], 0
+    while True:
+        status, resp = http("GET", api(
+            f"/eval/challenges?status={status_filter}&limit=100&offset={offset}"
+        ))
+        expect(status, resp)
+        page = resp.get("items", resp.get("challenges", []))
+        items.extend(page)
+        offset += len(page)
+        if not page or offset >= resp.get("total", offset):
+            return dict(resp, items=items, total=len(items))
 
 
 # "XAUUSD"/"GOLD" are kept as accepted *input* aliases for the --asset filter
@@ -1339,6 +1348,13 @@ def _fetch_civic_challenges():
     return list(deduped.values())
 
 
+def _fetch_price_event_challenges():
+    status, entries = _fetch_prediction_contract_entries()
+    if status != 200:
+        fail("Price-event discovery is unavailable; cannot claim a complete challenge list.", status)
+    return [item for item in (price_event_from_contract_entry(e) for e in entries) if item]
+
+
 def cmd_challenges(args):
     """Canonical discovery for financial markets plus Civic Index.
 
@@ -1348,8 +1364,8 @@ def cmd_challenges(args):
     ``submit_hint`` required by its frozen contract.
     """
     track = (args.track or "all").lower()
-    if track not in ("all", "financial", "macro", "civic"):
-        fail("--track must be one of: all, financial, macro, civic")
+    if track not in ("all", "financial", "macro", "civic", "price-event"):
+        fail("--track must be one of: all, financial, macro, civic, price-event")
     wanted = {_ASSET_ALIASES.get(a.upper(), a.upper()) for a in args.asset} if args.asset else None
     merged = []
     if track in ("all", "financial"):
@@ -1394,12 +1410,18 @@ def cmd_challenges(args):
                 forecast_submit_hint(c) + " (needs credits:stake)"
             )
             merged.append(c)
+    if track in ("all", "price-event"):
+        for c in _fetch_price_event_challenges():
+            if wanted and not _asset_matches(c, wanted):
+                continue
+            merged.append(dict(c, track="price_event"))
     payload = {
         "items": merged,
         "total": len(merged),
         "by_track": {
             "financial": sum(1 for c in merged if c["track"] == "financial"),
             "macro_numeric": sum(1 for c in merged if c["track"] == "macro_numeric"),
+            "price_event": sum(1 for c in merged if c["track"] == "price_event"),
             "civic_forecast": sum(1 for c in merged if c["track"] == "civic_forecast"),
         },
     }
@@ -1475,6 +1497,39 @@ def cmd_predict(args):
             "Paper-trade signal recorded — it does not affect settlement, score, credit, or "
             f"leaderboard. Review this challenge's signal history with `ha.py paper-signals {args.challenge_id}`."
         )
+    out(resp)
+
+
+def cmd_price_predict(args):
+    """Schema-aware score-only price-event submission; no credit stake."""
+    challenge = next((c for c in _fetch_price_event_challenges()
+                      if c["id"] == args.challenge_id), None)
+    if challenge is None:
+        fail("Not an open price-event challenge; run `ha.py challenges --track price-event`.")
+    if not 20 <= len(args.reasoning) <= 8000:
+        fail("--reasoning must contain 20-8000 characters")
+    shape = challenge["outcome_shape"]
+    if shape == "binary_probability" and (args.mean is not None or args.std is not None):
+        fail("Binary price events accept --yes-probability, not --mean/--std")
+    if shape == "numeric_distribution" and args.yes_probability is not None:
+        fail("Numeric price events accept --mean/--std, not --yes-probability")
+    forecast = _build_forecast_payload(shape, args, challenge)
+    body = {"reasoning": args.reasoning}
+    if shape == "binary_probability":
+        probability = forecast["yes_probability"]
+        body["probabilities"] = {"bullish": probability, "bearish": 1 - probability}
+    else:
+        body.update(predicted_value=forecast["mean"], predicted_std=forecast["std"])
+    path = f"/eval/price-events/challenges/{args.challenge_id}/predict"
+    status, resp = authed("POST", path, body)
+    if is_missing_scope(status, resp):
+        scope_key = quoted_scope_key(str(resp.get("detail", "")))
+        if scope_key:
+            note(f"Not subscribed to scope {scope_key}; subscribing and retrying.")
+            subscribe_status, subscribe_resp = authed("POST", f"/agent/prediction-scope/{scope_key}")
+            expect(subscribe_status, subscribe_resp)
+            status, resp = authed("POST", path, body)
+    expect(status, resp)
     out(resp)
 
 
@@ -1832,8 +1887,8 @@ def main():
 
     c = sub.add_parser("challenges", help="List prediction challenges (open by default; can include post-close financial signals)")
     c.add_argument("--status", default="open")
-    c.add_argument("--track", choices=["all", "financial", "macro", "civic"], default="all",
-                   help="all (default): financial + Civic Index; financial: market only; "
+    c.add_argument("--track", choices=["all", "financial", "macro", "civic", "price-event"], default="all",
+                   help="all (default): financial + Civic Index + price events; financial: market only; "
                         "civic: all official statistics/policy forecasts including open Legacy "
                         "compatibility rounds; macro: deprecated alias for civic")
     c.add_argument("--asset", nargs="*", help="filter by asset/indicator symbols, e.g. GC BTC CPI")
@@ -1862,6 +1917,14 @@ def main():
                     help="optional credit stake bound to this prediction, landing in the --direction bin "
                          "(needs credits:stake — self-grant with `ha.py scope --add credits:stake`)")
     pr.set_defaults(func=cmd_predict)
+
+    pe = sub.add_parser("price-predict", help="Submit a score-only binary/numeric price-event forecast")
+    pe.add_argument("challenge_id")
+    pe.add_argument("--yes-probability", type=float, default=None, dest="yes_probability")
+    pe.add_argument("--mean", type=float, default=None)
+    pe.add_argument("--std", type=float, default=None)
+    pe.add_argument("--reasoning", required=True)
+    pe.set_defaults(func=cmd_price_predict)
 
     ps = sub.add_parser("paper-signals", help="Read your own post-close paper-trade signals for a financial challenge")
     ps.add_argument("challenge_id")
