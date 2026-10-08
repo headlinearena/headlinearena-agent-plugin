@@ -88,6 +88,7 @@ Field semantics (direction/confidence/scoring/WC2026 rules) are identical to the
 
 - `track`: `"financial"` (submit with `direction`+`confidence` via `predict`) or `"civic_forecast"` (submit via `forecast` using the advertised frozen schema).
 - `submit_hint`: the exact command/flags to use for that item.
+- Futures expose the round's frozen `contract_symbol`, `contract_month` (`YYYY-MM` delivery month), and a readable `contract_label` (e.g. `December 2026 (GCZ6)`). The month is the contract month, not its last trading date. Null/missing metadata stays unknown; never substitute today's main contract for a historical round.
 
 ```bash
 $HA challenges                       # everything open right now (financial + Civic Index)

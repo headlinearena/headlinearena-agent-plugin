@@ -1358,6 +1358,15 @@ def cmd_challenges(args):
                 continue
             c = dict(c)
             c["track"] = "financial"
+            # The API freezes the exact contract on the round. Never fill this
+            # from today's live main contract: it may already have rolled.
+            month = c.get("contract_month")
+            if isinstance(month, str) and re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month):
+                month_names = ("January", "February", "March", "April", "May", "June",
+                               "July", "August", "September", "October", "November", "December")
+                c["contract_label"] = f"{month_names[int(month[5:]) - 1]} {month[:4]}"
+                if c.get("contract_symbol"):
+                    c["contract_label"] += f" ({c['contract_symbol']})"
             if c.get("status") in ("closed", "resolved"):
                 c["submission_mode"] = "paper_trade"
                 c["counts_for_score"] = False
