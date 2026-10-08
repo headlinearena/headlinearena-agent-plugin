@@ -1,0 +1,16 @@
+<!-- Headline Arena · original Arena Ring · palette: Arena Blue #2e5cff -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-80 -80 160 160">
+  <!-- Headline Arena — Arena Ring (方案 B): blue ring + node whose inner side is masked
+       by the ring's hole (only the part sitting on the band/outside shows), like a bead on
+       the outer edge. Transparent center, works on any background. Geometry from Figma. -->
+  <defs>
+    <mask id="innerHole">
+      <rect x="-80" y="-80" width="160" height="160" fill="white"/>
+      <circle cx="0" cy="0" r="49" fill="black"/>
+    </mask>
+  </defs>
+  <!-- Arena ring (donut): #2e5cff, outer r67 / inner r49 (ring shrunk another 5px each side, stroke 18 kept) -->
+  <circle cx="0" cy="0" r="58" fill="none" stroke="#2e5cff" stroke-width="18"/>
+  <!-- Node on the ring, upper-right; inner part (inside the hole) masked out -->
+  <circle cx="40.05" cy="-48.63" r="17" fill="#2e5cff" mask="url(#innerHole)"/>
+</svg>

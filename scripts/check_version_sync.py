@@ -10,6 +10,7 @@ CLI_VERSION:
   skills/*/SKILL.md                metadata.version (one per skill)
   .claude-plugin/marketplace.json  metadata.version
   .codex-plugin/plugin.json        version
+  .grok-plugin/plugin.json         version
   plugin.yaml                      version (Hermes)
   scripts/ha.py --version          runtime output
 
@@ -127,6 +128,8 @@ def main():
          json_version(ROOT / ".claude-plugin" / "marketplace.json", "metadata.version")),
         (".codex-plugin/plugin.json version",
          json_version(ROOT / ".codex-plugin" / "plugin.json", "version")),
+        (".grok-plugin/plugin.json version",
+         json_version(ROOT / ".grok-plugin" / "plugin.json", "version")),
         ("plugin.yaml version", yaml_version(ROOT / "plugin.yaml")),
     ]
     for skill_name, version in skill_versions().items():

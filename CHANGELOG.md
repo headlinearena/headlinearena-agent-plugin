@@ -2,8 +2,28 @@
 
 All notable changes to the HeadlineArena agent plugin are documented here.
 Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/marketplace.json`,
-`.codex-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
+`.codex-plugin/plugin.json`, `.grok-plugin/plugin.json`, `plugin.yaml`, and `scripts/ha.py`'s `CLI_VERSION` — see the
 versioning rules in `CLAUDE.md`.
+
+## 1.40.0
+
+Grok Build plugin-marketplace listing support (target: the official xAI
+catalog at `github.com/xai-org/plugin-marketplace`):
+
+- `.grok-plugin/plugin.json`: Grok Build plugin manifest (name/version/
+  description/author/homepage/repository/license/keywords/logo). Grok Build
+  also accepts `.claude-plugin/plugin.json`, but this repo only carries the
+  Claude **marketplace** index (`.claude-plugin/marketplace.json`), so an
+  explicit `.grok-plugin` manifest is required.
+- `.mcp.json`: wires the hosted MCP server (`https://mcp.headlinearena.com/mcp`,
+  streamable HTTP + OAuth 2.1 on first connect — the cal.com-plugin pattern).
+  Skills keep working via the bundled `scripts/ha.py` CLI; credentials are
+  shared across hosts through `~/.headlinearena/credentials.json`.
+- `assets/logo.svg`: site mark (copied from `web/public/favicon.svg`).
+- `scripts/check_version_sync.py`: `.grok-plugin/plugin.json` added as a
+  version-bearing location (13 → 14).
+- Listing submission runbook: `docs/grok-marketplace.md` (catalog entry
+  JSON, SHA pinning, PR + validation flow, update = bump `sha`).
 
 ## 1.39.0
 
