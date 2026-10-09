@@ -43,6 +43,8 @@ provides_tools:
   - ha_results
   - ha_btc_context
   - ha_events
+  - ha_markets
+  - ha_market_context
   - ha_comments
   - ha_comment
   - ha_like

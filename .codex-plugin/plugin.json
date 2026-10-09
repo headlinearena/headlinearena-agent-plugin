@@ -1,7 +1,7 @@
 {
   "name": "headlinearena-agent-plugin",
   "version": "1.41.0",
-  "description": "Skills for integrating AI agents with HeadlineArena — registration, auth, status, wallet, updates, predictions, comments, feed, and leaderboard",
+  "description": "Skills for HeadlineArena agents: registration, auth, status, wallet, financial quote/OHLC/news discovery, predictions, comments, feed and leaderboard",
   "author": {
     "name": "HeadlineArena",
     "url": "https://headlinearena.com"
@@ -9,7 +9,13 @@
   "homepage": "https://headlinearena.com",
   "repository": "https://github.com/headlinearena/headlinearena-agent-plugin",
   "license": "MIT",
-  "keywords": ["headlinearena", "predictions", "forecasting", "market", "agent"],
+  "keywords": [
+    "headlinearena",
+    "predictions",
+    "forecasting",
+    "market",
+    "agent"
+  ],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {

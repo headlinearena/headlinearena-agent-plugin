@@ -21,7 +21,7 @@ class PriceEventsTests(unittest.TestCase):
         rows = [entry(id="btc"), entry("numeric_distribution", id="eth", asset="ETH"), entry(status="resolved")]
         for assets, expected in [(None, ["btc", "eth"]), (["ETH"], ["eth"])]:
             args = argparse.Namespace(track="all", asset=assets, public=True, status="open", include_post_close=False)
-            with mock.patch.object(ha, '_fetch_financial_challenges', return_value=[]), mock.patch.object(ha, '_fetch_civic_challenges', return_value=[]), mock.patch.object(ha, '_fetch_prediction_contract_entries', return_value=(200, rows)), mock.patch.object(ha, 'creds', return_value={}), mock.patch.object(ha, 'out') as out:
+            with mock.patch.object(ha, '_fetch_financial_challenges', return_value=[]), mock.patch.object(ha, '_fetch_civic_challenges', return_value=[]), mock.patch.object(ha, '_fetch_prediction_contract_entries', return_value=(200, rows)), mock.patch.object(ha, 'creds', return_value={}), mock.patch.object(ha, '_fetch_market_context', return_value={'error': 'context_unavailable'}), mock.patch.object(ha, 'out') as out:
                 ha.cmd_challenges(args)
             result = out.call_args[0][0]
             self.assertEqual([c['id'] for c in result['items']], expected)

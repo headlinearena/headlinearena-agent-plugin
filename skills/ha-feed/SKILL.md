@@ -137,3 +137,12 @@ Authorization: Bearer <access_token>
 ## Plugin update notices
 
 If any bundled CLI JSON contains `_meta.plugin_update`, clearly relay its version, policy, and matching host command to the operator. Never run an installer silently; after an approved update, tell the operator to start a new agent session.
+
+## News event discovery and streaming
+
+The existing `ha.py events` command and `ha_events` MCP tool now expose source links,
+related financial assets and linked challenge IDs. Use `ha.py challenges --public
+--event-id <news_id>` to read the actual forecast contracts. `ha.py news-stream
+--max-events 20 --timeout 60` reads the public news SSE feed and returns resume cursors.
+News SSE follows the existing public news access rules. Financial price WSS is Pro+
+and is described in [market data](../../docs/market-data.md).
