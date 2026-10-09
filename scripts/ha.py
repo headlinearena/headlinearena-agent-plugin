@@ -41,6 +41,7 @@ from pathlib import Path
 # historical name in this module's namespace so existing callers, tests
 # (mock.patch.object(ha, ...)), and the Hermes adapter keep resolving.
 from ha_client import auth, transport
+from ha_client.market_data import read_sse
 from ha_client.errors import HAFailure, fail, note
 from ha_client.transport import expect
 from ha_client.contracts import (
@@ -74,7 +75,7 @@ from ha_client.legacy import (
     quoted_scope_key,
 )
 
-CLI_VERSION = "1.41.0"
+CLI_VERSION = "1.42.0"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -1355,6 +1356,22 @@ def _fetch_price_event_challenges():
     return [item for item in (price_event_from_contract_entry(e) for e in entries) if item]
 
 
+def _fetch_market_context(asset, hours=24, bar_limit=48):
+    path = f"/eval/context/{urllib.parse.quote(asset, safe='')}?hours={hours}&bar_limit={bar_limit}"
+    try:
+        status, result = http("GET", api(path))
+    except HAFailure:
+        status, result = 0, {}
+    if status != 200:
+        return {"asset": asset, "error": "context_unavailable", "http_status": status,
+                "availability": {"quote": False, "ohlc": False}}
+    if not isinstance(result, dict) or not {"quote", "ohlc", "availability"}.issubset(result):
+        return {"asset": asset, "error": "context_unavailable",
+                "reason": "market_evidence_api_upgrade_required",
+                "availability": {"quote": False, "ohlc": False}}
+    return result
+
+
 def cmd_challenges(args):
     """Canonical discovery for financial markets plus Civic Index.
 
@@ -1415,6 +1432,9 @@ def cmd_challenges(args):
             if wanted and not _asset_matches(c, wanted):
                 continue
             merged.append(dict(c, track="price_event"))
+    event_id = getattr(args, "event_id", None)
+    if isinstance(event_id, str) and event_id:
+        merged = [item for item in merged if item.get("event_id") == event_id]
     payload = {
         "items": merged,
         "total": len(merged),
@@ -1425,6 +1445,18 @@ def cmd_challenges(args):
             "civic_forecast": sum(1 for c in merged if c["track"] == "civic_forecast"),
         },
     }
+    if getattr(args, "include_market_context", True):
+        market_context = {}
+        for item in merged:
+            if item["track"] not in ("financial", "price_event"):
+                continue
+            asset = item.get("asset")
+            if not asset or asset in market_context:
+                continue
+            existing = item.get("context")
+            market_context[asset] = (existing if isinstance(existing, dict) and existing.get("ohlc")
+                                     else _fetch_market_context(asset))
+        payload["market_context"] = market_context
     if getattr(args, "include_post_close", False):
         payload["paper_trade_hint"] = (
             "closed/resolved financial items are available for continued paper-trade market "
@@ -1718,6 +1750,45 @@ def cmd_btc_context(args):
     out(resp)
 
 
+def cmd_markets(args):
+    status, result = http("GET", api("/eval/market-assets"))
+    expect(status, result)
+    out(result)
+
+
+def cmd_market_context(args):
+    asset = args.asset.upper()
+    path = f"/eval/context/{urllib.parse.quote(asset, safe='')}?hours={args.hours}&bar_limit={args.bar_limit}"
+    status, result = http("GET", api(path))
+    expect(status, result)
+    if not isinstance(result, dict) or not {"quote", "ohlc", "availability"}.issubset(result):
+        fail("The platform API needs the market-evidence update before quotes/OHLC can be read.")
+    out(result)
+
+
+def cmd_news_stream(args):
+    """Bounded NDJSON stream; carry each resume cursor back to the caller."""
+    if args.max_events < 1 or args.timeout <= 0:
+        fail("--max-events and --timeout must be positive")
+    path = "/events/stream?initial_limit=" + str(args.initial_limit)
+    if args.cursor:
+        path += "&cursor=" + urllib.parse.quote(args.cursor, safe="")
+    request = urllib.request.Request(api(path), headers={"Accept": "text/event-stream"})
+    deadline = time.monotonic() + args.timeout
+    try:
+        with urllib.request.urlopen(request, timeout=args.timeout) as response:
+            if "text/event-stream" not in response.headers.get("Content-Type", ""):
+                fail("Expected a text/event-stream news response")
+            for item in read_sse(response, args.max_events, deadline=deadline):
+                print(json.dumps(item, ensure_ascii=False), flush=True)
+                if time.monotonic() >= deadline:
+                    break
+    except (OSError, ValueError) as exc:
+        if isinstance(exc, TimeoutError) and time.monotonic() >= deadline:
+            return
+        fail("News stream unavailable: " + str(exc))
+
+
 def cmd_events(args):
     path = "/events/today" if args.today else "/events"
     status, resp = http("GET", api(path))
@@ -1898,6 +1969,9 @@ def main():
         help="also list closed/resolved financial challenges that accept paper-trade signals only "
              "(counts_for_score=false; no stake)",
     )
+    c.add_argument("--event-id", help="Discover forecast contracts linked to a news event")
+    c.add_argument("--no-market-context", dest="include_market_context", action="store_false",
+                   help="Skip the default quote/OHLC evidence bundle")
     c.set_defaults(func=cmd_challenges)
 
     pr = sub.add_parser("predict", help="Submit a prediction")
@@ -1995,6 +2069,19 @@ def main():
     res.set_defaults(func=cmd_results)
 
     sub.add_parser("btc-context", help="BTC session timetable and flash triggers").set_defaults(func=cmd_btc_context)
+
+    sub.add_parser("markets", help="Discover financial assets, public news SSE and Pro+ price WSS").set_defaults(func=cmd_markets)
+    market = sub.add_parser("market-context", help="Fresh quote with age, OHLC and news for a financial asset")
+    market.add_argument("asset")
+    market.add_argument("--hours", type=float, default=24)
+    market.add_argument("--bar-limit", type=int, default=288)
+    market.set_defaults(func=cmd_market_context)
+    stream = sub.add_parser("news-stream", help="Read public news SSE with resume cursors (sources refresh every 3 min)")
+    stream.add_argument("--cursor")
+    stream.add_argument("--initial-limit", type=int, choices=range(1, 101), default=20)
+    stream.add_argument("--max-events", type=int, default=20)
+    stream.add_argument("--timeout", type=float, default=60)
+    stream.set_defaults(func=cmd_news_stream)
 
     ev = sub.add_parser("events", help="List market events (public)")
     ev.add_argument("--today", action="store_true")

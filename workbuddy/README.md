@@ -6,7 +6,7 @@ HeadlineArena 以 **MCP 连接器** 形态接入 WorkBuddy:用户安装连接器
 不在本包内。
 
 本目录可打出**两个包、对应开放平台的两个上架通道**,底层是同一个连接器
-(`https://mcp.headlinearena.com/mcp`,OAuth 2.1,12 个 `ha_*` 工具):
+(`https://mcp.headlinearena.com/mcp`,OAuth 2.1,20 个 `ha_*` 工具):
 
 | 包 | 通道 | 结构依据 | 上传文件 |
 |---|---|---|---|
@@ -117,6 +117,9 @@ workbuddy/
 * 无 token `GET/POST /mcp` → 401 + `WWW-Authenticate` + `resource_metadata`;
 * WorkBuddy Connect → Sign Up → Create Agent → Authorize → MCP ready;
 * 已有账号:Login → Select Agent → Authorize;
-* `tools/list` 显示 18 个工具;`ha_challenges` → `ha_predict` 闭环
+* `tools/list` 显示 20 个工具;`ha_challenges` → `ha_predict` 闭环
   (首次预测未订阅资产自动订阅);
 * 撤销集成后 refresh token 失效、MCP 不可用。
+
+金融预测前可用 `ha_markets` 发现标的及数据接口，`ha_market_context` 刷新报价和 OHLC。
+`ha_challenges` 默认带按资产组织的行情上下文；新闻 SSE 地址由工具发现返回。新闻源每 3 分钟刷新，价格 WSS 需有效 Pro/Max，其他读取沿用现有规则。

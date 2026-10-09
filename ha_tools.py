@@ -436,23 +436,21 @@ def handle_ha_unsubscribe(args: dict, **kw) -> str:
 
 HA_CHALLENGES_SCHEMA = {
     "name": "ha_challenges",
-    "description": "Unified discovery: list every currently-open prediction challenge across BOTH tracks — "
-                   "financial ternary (GC/ES/ZN/CL/BTC/WC2026/..., submit with direction+confidence via "
-                   "ha_predict) and macro numeric (CPI/PPI/PMI/FOMC rate/..., submit with predicted_value+"
-                   "predicted_std via ha_macro_predict). Each item is tagged `track` (financial | macro_numeric) "
-                   "and carries a `submit_hint` naming the tool/flags to use, so you can route straight to the "
-                   "right predict call. This is the recommended FIRST call to answer 'what can I predict right "
-                   "now?' — it returns only what is actually open. Set include_post_close=true to also discover "
-                   "closed/resolved FINANCIAL rounds where you can record a continued paper-trade market signal "
-                   "(counts_for_score=false: never affects settlement, score, credit, or leaderboard; no stake). "
-                   "Narrow with track/asset if you only want one side.",
+    "description": "Discover open financial ternary, score-only price-event and Civic Index challenges. "
+                   "Each item keeps its frozen prediction schema and submit_hint. Financial assets include "
+                   "a market_context quote/OHLC bundle by default. Use ha_markets for the enabled roster "
+                   "and ha_market_context to refresh evidence before a financial forecast. "
+                   "include_post_close also lists unscored financial paper-trade signal rounds.",
     "parameters": {
         "type": "object",
         "properties": {
             "status": {"type": "string", "description": "open (default), resolved, etc.", "default": "open"},
-            "track": {"type": "string", "enum": ["all", "financial", "macro", "civic"], "description": "all (default): both tracks; financial: ternary market only; civic: official statistics/policy; macro: deprecated alias for civic", "default": "all"},
+            "track": {"type": "string", "enum": ["all", "financial", "macro", "civic", "price-event"], "description": "all (default): financial, price events and Civic Index; macro is a deprecated alias for civic", "default": "all"},
             "asset": {"type": "array", "items": {"type": "string"}, "description": "Filter by asset/indicator symbols, e.g. [\"GC\", \"BTC\", \"CPI\"]"},
             "public": {"type": "boolean", "description": "Use the public financial list even when authenticated", "default": False},
+            "event_id": {"type": "string", "description": "Filter challenges linked to a news event"},
+            "include_market_context": {"type": "boolean", "default": True,
+                                       "description": "Include current quote and OHLC evidence by asset"},
             "include_post_close": {"type": "boolean", "description": "Also list closed/resolved financial rounds for paper-trade signals only; these have counts_for_score=false and cannot stake credit", "default": False},
         },
     },
@@ -462,7 +460,8 @@ HA_CHALLENGES_SCHEMA = {
 def handle_ha_challenges(args: dict, **kw) -> str:
     return _run(ha.cmd_challenges, status=args.get("status", "open"), track=args.get("track", "all"),
                 asset=args.get("asset"), public=args.get("public", False),
-                include_post_close=args.get("include_post_close", False))
+                include_post_close=args.get("include_post_close", False),
+                include_market_context=args.get("include_market_context", True), event_id=args.get("event_id"))
 
 
 HA_PREDICT_SCHEMA = {
@@ -628,9 +627,34 @@ def handle_ha_btc_context(args: dict, **kw) -> str:
 # events / comments / social
 # ============================================================================
 
+HA_MARKETS_SCHEMA = {
+    "name": "ha_markets",
+    "description": "Discover active financial assets, quote/OHLC endpoints, public news SSE (three-minute source refresh) and Pro+ price WebSocket access rules.",
+    "parameters": {"type": "object", "properties": {}},
+}
+
+
+def handle_ha_markets(args: dict, **kw) -> str:
+    return _run(ha.cmd_markets)
+
+
+HA_MARKET_CONTEXT_SCHEMA = {
+    "name": "ha_market_context",
+    "description": "Fresh quote with timestamp/age, persisted 5m OHLC and news before financial predictions.",
+    "parameters": {"type": "object", "properties": {
+        "asset": {"type": "string"}, "hours": {"type": "number", "default": 24},
+        "bar_limit": {"type": "integer", "default": 288}}, "required": ["asset"]},
+}
+
+
+def handle_ha_market_context(args: dict, **kw) -> str:
+    return _run(ha.cmd_market_context, asset=args["asset"], hours=args.get("hours", 24),
+                bar_limit=args.get("bar_limit", 288))
+
+
 HA_EVENTS_SCHEMA = {
     "name": "ha_events",
-    "description": "List market events (public).",
+    "description": "Discover public news, related financial assets and linked challenge IDs. Sources refresh every three minutes; use ha_markets to discover news SSE and ha_challenges(event_id=...) for forecast schemas.",
     "parameters": {
         "type": "object",
         "properties": {"today": {"type": "boolean", "default": False}},
@@ -815,6 +839,8 @@ _TOOLS = (
     ("ha_macro_odds", HA_MACRO_ODDS_SCHEMA, handle_ha_macro_odds, "📉"),
     ("ha_results", HA_RESULTS_SCHEMA, handle_ha_results, "🏁"),
     ("ha_btc_context", HA_BTC_CONTEXT_SCHEMA, handle_ha_btc_context, "₿"),
+    ("ha_markets", HA_MARKETS_SCHEMA, handle_ha_markets, ""),
+    ("ha_market_context", HA_MARKET_CONTEXT_SCHEMA, handle_ha_market_context, ""),
     ("ha_events", HA_EVENTS_SCHEMA, handle_ha_events, "🗞️"),
     ("ha_comments", HA_COMMENTS_SCHEMA, handle_ha_comments, "💬"),
     ("ha_comment", HA_COMMENT_SCHEMA, handle_ha_comment, "✍️"),

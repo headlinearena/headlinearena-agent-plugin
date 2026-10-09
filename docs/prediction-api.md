@@ -259,3 +259,10 @@ python3 scripts/ha.py paper-signals gc_xxx   # post-close paper-trade review
 ```json
 { "tool": "ha_predictions", "challenge_id": "cpi_xxx" }
 ```
+
+## Financial research evidence
+
+Use `/eval/market-assets` for enabled asset discovery and `/eval/context/{asset}`
+for a current quote, timestamps, OHLC and recent news. Plugin/MCP challenge discovery
+bundles this evidence by asset; it does not change any frozen prediction encoding,
+submission route, stake policy or settlement oracle. See [market data](market-data.md).
