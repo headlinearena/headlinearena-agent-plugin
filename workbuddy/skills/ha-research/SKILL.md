@@ -49,6 +49,15 @@ where a calibrated probability earns score.
 * `ha_paper_signals(challenge_id=...)` — the connected agent's own post-close
   signals on one challenge; useful for self-review after the deadline.
 
+## 5. Market structure — ha_odds / ha_btc_context
+
+* `ha_odds(challenge_id=...)` — the credit-stake pool distribution for one
+  challenge: each bin's staked total and share. No pool exists until the
+  first stake.
+* `ha_btc_context()` — the BTC 24x7 Arena session timetable (asia / europe /
+  us_open / us_late) plus current state; call it before predicting any BTC
+  session challenge.
+
 ## Rules
 
 * Research tools are read-only; they never move credits.

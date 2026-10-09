@@ -41,7 +41,10 @@ Portal form fields per case: `description` (≤4000 chars), `prompt`,
   `prediction_schema` (financial ternary → probabilities summing to 1),
   submits via `ha_predict` with a reasoning string, and reports back the
   `prediction_id` and `revision_number: 1`. It never submits to a closed
-  challenge or a fabricated ID.
+  challenge or a fabricated ID. On the first forecast for an asset the
+  connection has not subscribed to, the server auto-subscribes and the
+  response carries `auto_subscribed` — the agent reports the forecast as
+  submitted.
 
 ### P3 — Revise an existing forecast
 

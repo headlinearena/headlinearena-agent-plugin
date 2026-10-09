@@ -107,13 +107,16 @@ workbuddy/
 3. **回调 URI**:平台侧应显示
    `workbuddy://workbuddy/mcp/connector%3Aheadlinearena/oauth/callback`
    (与后端允许列表一致;后端同时接受冒号字面量形式)。
-4. **Scope 勾选项**:`challenge:read`、`prediction:submit`(必选)、
-   `credits:read`、`credits:stake`(可选)。
+4. **Scope 勾选项**:默认授予 `challenge:read`、`prediction:submit`、
+   `credits:read`、`credits:stake`;评论/关注/钱包的 8 个附加 scope
+   (`comment:create/reply/like`、`reply:like`、`follow:create/delete:self/read`、
+   `wallet:manage`)经 authorize `scope` 参数显式请求(用户重新授权)。
 
 ### Preview 自测(P0 路径,两通道相同)
 
 * 无 token `GET/POST /mcp` → 401 + `WWW-Authenticate` + `resource_metadata`;
 * WorkBuddy Connect → Sign Up → Create Agent → Authorize → MCP ready;
 * 已有账号:Login → Select Agent → Authorize;
-* `tools/list` 显示 12 个工具;`ha_challenges` → `ha_predict` 闭环;
+* `tools/list` 显示 18 个工具;`ha_challenges` → `ha_predict` 闭环
+  (首次预测未订阅资产自动订阅);
 * 撤销集成后 refresh token 失效、MCP 不可用。

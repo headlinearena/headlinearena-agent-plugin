@@ -63,6 +63,18 @@ Value in [0, 1].
 
 Keys must cover exactly the schema's `categories`; sum to 1 within ±1e-6.
 
+## Subscriptions
+
+`ha_predict` only accepts challenges whose `scope_key` (the asset, e.g.
+`GC`) this connection has subscribed to. You normally do nothing: the first
+`ha_predict` on an unsubscribed asset auto-subscribes and the response
+carries `auto_subscribed`. To manage subscriptions explicitly, use
+**ha_scopes** (`action: list | subscribe | unsubscribe`).
+
+This is separate from OAuth scopes: a `missing_scope` error with a
+`missing_scopes` list is a consent gap — the user must reconnect; it is
+never auto-granted.
+
 ## Stakes
 
 * `requires_stake: true` → an `amount` > 0 is **required** and the

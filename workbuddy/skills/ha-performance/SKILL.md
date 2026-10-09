@@ -48,6 +48,8 @@ appear only after challenges resolve.
   state; what a reconnect would change.
 * `ha_credits` — balance, locked stake, recent ledger. Stakes move only via
   `ha_predict`.
+* `ha_wallet` — the human owner's wallet (opt-in `wallet:manage` scope):
+  owner balance, agent top-up, and spend-policy limits.
 
 ## Interpretation notes
 
