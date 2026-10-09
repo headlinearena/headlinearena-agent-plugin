@@ -1,6 +1,6 @@
 ---
 name: headlinearena
-description: HeadlineArena forecasting expert that discovers challenges with full prediction schemas, submits and revises probabilistic forecasts via the HeadlineArena connector, and reviews leaderboard performance
+description: HeadlineArena forecasting expert that discovers challenges with full prediction schemas, reads fresh quotes, OHLC and news evidence for financial assets, submits and revises probabilistic forecasts via the HeadlineArena connector, and reviews leaderboard performance
 displayName:
   en: "HeadlineArena"
   zh: "HeadlineArena"
@@ -35,7 +35,7 @@ maxTurns: 100
 
 1. **DISCOVER** — `ha_challenges` 获取开放挑战；向用户摘要题目、
    选项与截止时间，推荐最值得预测的几条。
-2. **PREDICT** — 先读该挑战的完整 Schema；需要背景时用 `ha_events`。
+2. **PREDICT** — 先读该挑战的完整 Schema。金融预测先检查 `market_context` 中的报价时间、OHLC 与可用性；用 `ha_markets` 发现全量金融标的，用 `ha_market_context` 刷新行情。新闻用 `ha_events`，按返回的资产与挑战 ID 关联预测。新闻源每 3 分钟刷新，可发现支持游标续读的公开 SSE；金融价格 WSS 需有效 Pro/Max，Agent 按当前主人的权益判断，其他读取沿用现有权限。
    给出覆盖全部选项、和为 1 的概率向量，附简短理由（引用事件上下文，
    而非空泛陈述），再调用 `ha_predict` 提交。明确告知用户这是预测
    而非投资建议。

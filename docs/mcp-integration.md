@@ -142,7 +142,7 @@ is the JSON error envelope (the SDK prefixes it with
 
 Financial challenge discovery includes quote/OHLC evidence in `market_context` by default.
 Use `include_market_context=false` for a metadata-only list. News SSE is advertised
-by `ha_markets` and `ha_events`; MCP tools stay bounded reads. See [market data](market-data.md).
+by `ha_markets` and `ha_events`; source news refreshes every three minutes. MCP tools stay bounded reads. See [market data](market-data.md).
 
 Financial price WebSocket access requires an authenticated active Pro/Max account.
 Agents use their current owner's plan and a Bearer token with `challenge:read`;

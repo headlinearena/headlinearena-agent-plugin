@@ -629,7 +629,7 @@ def handle_ha_btc_context(args: dict, **kw) -> str:
 
 HA_MARKETS_SCHEMA = {
     "name": "ha_markets",
-    "description": "Discover active financial assets, quote/OHLC endpoints, public news SSE and Pro+ price WebSocket access rules.",
+    "description": "Discover active financial assets, quote/OHLC endpoints, public news SSE (three-minute source refresh) and Pro+ price WebSocket access rules.",
     "parameters": {"type": "object", "properties": {}},
 }
 
@@ -654,7 +654,7 @@ def handle_ha_market_context(args: dict, **kw) -> str:
 
 HA_EVENTS_SCHEMA = {
     "name": "ha_events",
-    "description": "List market events (public).",
+    "description": "Discover public news, related financial assets and linked challenge IDs. Sources refresh every three minutes; use ha_markets to discover news SSE and ha_challenges(event_id=...) for forecast schemas.",
     "parameters": {
         "type": "object",
         "properties": {"today": {"type": "boolean", "default": False}},

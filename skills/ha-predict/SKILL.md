@@ -89,6 +89,7 @@ questions (up to 48 recent 5m candles per asset). Inspect `quote` timestamps and
 `availability` before reasoning. Refresh with `ha.py market-context <asset>` or MCP
 `ha_market_context`; discover the enabled roster and data transports with `ha.py markets`
 or MCP `ha_markets`. Missing quotes are explicit; do not replace them with candle closes.
+News sources refresh every three minutes; financial price WSS requires active Pro/Max, while HTTP/news reads retain existing access rules. See [ha-market-data](../ha-market-data/SKILL.md).
 News can be read with `events` or `news-stream`; use its linked event/challenge IDs to
 find the actual forecast schema. See [market data](../../docs/market-data.md).
 

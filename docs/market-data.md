@@ -30,7 +30,7 @@ The initial batch contains the latest ingested/updated public events from the pa
 
 Reconnect using `Last-Event-ID: <token>` or `?cursor=<token>`. The cursor uses ingestion/update time plus event UUID, so newly backfilled older headlines and updates are discoverable. Client-side upserts by event ID handle updates/replays. Invalid cursors return 422. Connections rotate after five minutes and advertise a five-second retry. No DB transaction stays open between polls.
 
-News source fetching remains approximately every three minutes. SSE pushes persisted news; it does not make the upstream feed tick-level real time. Publication timestamps are separate from delivery/ingestion timestamps.
+News source fetching remains approximately every three minutes. Asset discovery exposes `news_source_refresh_seconds=180` and `news_stream_poll_seconds=5`. SSE pushes persisted news; it does not make the upstream feed tick-level real time. Publication timestamps are separate from delivery/ingestion timestamps.
 
 The plugin provides a bounded CLI reader:
 

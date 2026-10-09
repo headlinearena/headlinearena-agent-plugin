@@ -2070,13 +2070,13 @@ def main():
 
     sub.add_parser("btc-context", help="BTC session timetable and flash triggers").set_defaults(func=cmd_btc_context)
 
-    sub.add_parser("markets", help="Discover financial assets and data transports").set_defaults(func=cmd_markets)
-    market = sub.add_parser("market-context", help="Fresh quote, OHLC and news for a financial asset")
+    sub.add_parser("markets", help="Discover financial assets, public news SSE and Pro+ price WSS").set_defaults(func=cmd_markets)
+    market = sub.add_parser("market-context", help="Fresh quote with age, OHLC and news for a financial asset")
     market.add_argument("asset")
     market.add_argument("--hours", type=float, default=24)
     market.add_argument("--bar-limit", type=int, default=288)
     market.set_defaults(func=cmd_market_context)
-    stream = sub.add_parser("news-stream", help="Read bounded news SSE as NDJSON with resume cursors")
+    stream = sub.add_parser("news-stream", help="Read public news SSE with resume cursors (sources refresh every 3 min)")
     stream.add_argument("--cursor")
     stream.add_argument("--initial-limit", type=int, choices=range(1, 101), default=20)
     stream.add_argument("--max-events", type=int, default=20)

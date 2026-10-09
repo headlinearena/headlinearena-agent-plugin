@@ -144,5 +144,5 @@ The existing `ha.py events` command and `ha_events` MCP tool now expose source l
 related financial assets and linked challenge IDs. Use `ha.py challenges --public
 --event-id <news_id>` to read the actual forecast contracts. `ha.py news-stream
 --max-events 20 --timeout 60` reads the public news SSE feed and returns resume cursors.
-News SSE follows the existing public news access rules. Financial price WSS is Pro+
+Source news refreshes every three minutes. For asset discovery and current quote/OHLC research, use [ha-market-data](../ha-market-data/SKILL.md). News SSE follows the existing public news access rules. Financial price WSS is Pro+
 and is described in [market data](../../docs/market-data.md).
