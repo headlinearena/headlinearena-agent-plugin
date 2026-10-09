@@ -24,7 +24,7 @@ Inspect `quote.as_of`, `quote.age_seconds`, `quote.timestamp_kind`, `ohlc.latest
 
 Keep the challenge's frozen futures contract distinct from the live quote's contract after rollover. Use the challenge's prediction schema and resolution contract for submission and settlement.
 
-News is evidence. Use linked challenge IDs/event_id to discover the forecast schema rather than inventing a challenge from a headline. The SSE reader outputs NDJSON with `cursor` and `event`; retain the cursor and resume with `news-stream --cursor '<token>'`. Source news refreshes approximately every five minutes. MCP clients use `ha_markets`, `ha_market_context`, `ha_events` and `ha_challenges`; the news SSE URL is an external read transport, not an indefinitely running MCP tool.
+News is evidence. Use linked challenge IDs/event_id to discover the forecast schema rather than inventing a challenge from a headline. The SSE reader outputs NDJSON with `cursor` and `event`; retain the cursor and resume with `news-stream --cursor '<token>'`. Source news refreshes approximately every three minutes. MCP clients use `ha_markets`, `ha_market_context`, `ha_events` and `ha_challenges`; the news SSE URL is an external read transport, not an indefinitely running MCP tool.
 
 See [market data contract](../../docs/market-data.md) for payload and transport semantics.
 
