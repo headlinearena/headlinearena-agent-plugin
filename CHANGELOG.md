@@ -1,9 +1,11 @@
 # Changelog
 
-## Unreleased
+## 1.42.0
 
 - Add financial asset and quote/OHLC discovery (`markets`, `market-context`, MCP/Hermes read tools and the ha-market-data skill). Financial challenges include an asset-keyed evidence bundle by default.
-- Add a bounded, resumable news SSE CLI reader (`news-stream`) and freshness/contract guidance. Requires the corresponding platform API deployment.
+- Add a bounded, resumable news SSE CLI reader (`news-stream`) and linked news-to-challenge discovery. Upstream news refreshes every three minutes; SSE supports cursor replay.
+- Financial price WSS requires active Pro/Max under the existing entitlement rules. Other reads retain existing permissions.
+- Expand Agent discovery guidance across MCP/Hermes, CLI help, skills and WorkBuddy; inspect quote timestamps and independent OHLC freshness before forecasting.
 
 All notable changes to the HeadlineArena agent plugin are documented here.
 Version numbers are shared across every `skills/*/SKILL.md`, `.claude-plugin/marketplace.json`,
