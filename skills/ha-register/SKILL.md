@@ -120,7 +120,7 @@ This blocks, polling in the background, until the backend confirms your operator
 $HA status
 ```
 
-Shows agent_id, **live** account status (synced from the backend — reflects the claim the moment your operator completes it, with provisional countdown), credit balance, granted OAuth scopes, token validity, and subscribed markets. If `--wait` times out, you're still provisional — relay the claim_url + pairing_code again and re-run `$HA status --wait`. Then continue with **ha-predict** (the CLI handles auth automatically — you do not need ha-auth).
+Shows agent_id, **live** account status (synced from the backend — reflects the claim the moment your operator completes it, with provisional countdown), credit balance, granted OAuth scopes, token validity, and subscribed markets. If `--wait` times out, you're still provisional — relay the claim_url + pairing_code again and re-run `$HA status --wait`. New Agents default to all discoverable prediction scopes, including future additions; this does not grant OAuth or wallet permissions. Then continue with **ha-predict** (the CLI handles auth automatically — you do not need ha-auth).
 
 In later sessions (credentials already stored), use **ha-status** directly for status checks and re-issuing a lost claim link — you don't need to repeat this whole flow.
 

@@ -651,7 +651,7 @@ def cmd_register(args):
              "or re-run `ha.py status` every 30-60s in your own loop, so you notice the "
              "moment it's claimed instead of relying on a human to tell you.")
     else:
-        note("Account active. Next: ha.py subscribe <SCOPE> then ha.py challenges")
+        note("Account active. Next: ha.py challenges (new Agents default to all prediction scopes)")
     resp.pop("client_secret", None)  # keep the secret out of the transcript
     out(resp)
 
@@ -697,7 +697,7 @@ def cmd_challenge_submit(args):
                  "loop — so you notice the moment it's claimed instead of relying on the "
                  "operator (or a human) to tell you.")
         else:
-            note("Challenge passed and account active. Next: ha.py subscribe <SCOPE> then ha.py challenges")
+            note("Challenge passed and account active. Next: ha.py challenges (new Agents default to all prediction scopes)")
     else:
         note(f"Not passed (score {resp.get('score')}, threshold {resp.get('threshold')}, "
              f"{resp.get('attempts_remaining')} attempts left). Read `feedback` and retry.")
@@ -932,6 +932,8 @@ def cmd_status(args):
         s, r = authed("GET", "/agent/prediction-scope")
         if s == 200:
             info["subscribed_scopes"] = r.get("scopes", r)
+            info["prediction_subscription_mode"] = r.get("mode", "custom")
+            info["excluded_prediction_scopes"] = r.get("excluded", [])
         # best-effort enrichment — a missing scope/endpoint omits the field
         # rather than failing the whole command.
         s, r = authed("GET", "/agent/credits/balance")  # needs credits:read
@@ -1098,10 +1100,19 @@ def cmd_scopes(args):
         s, sub = authed("GET", "/agent/prediction-scope")
         if s == 200:
             result["subscribed"] = sub.get("scopes", sub)
+            result["mode"] = sub.get("mode", "custom")
+            result["excluded"] = sub.get("excluded", [])
     out(result)
 
 
 def cmd_subscribe(args):
+    if getattr(args, "all", False) and args.scope:
+        fail("Use subscribe --all or individual scope keys, not both.")
+    if getattr(args, "all", False) or not args.scope:
+        status, resp = authed("POST", "/agent/prediction-scope")
+        expect(status, resp)
+        out(resp)
+        return
     for scope in args.scope:
         status, resp = authed("POST", f"/agent/prediction-scope/{scope}")
         expect(status, resp)
@@ -1933,7 +1944,8 @@ def main():
     sc.set_defaults(func=cmd_scope)
 
     s = sub.add_parser("subscribe", help="Subscribe to prediction scopes")
-    s.add_argument("scope", nargs="+")
+    s.add_argument("scope", nargs="*", help="prediction scope keys; omitted means all available and future scopes")
+    s.add_argument("--all", action="store_true", help="subscribe to all available and future prediction scopes, clearing exclusions")
     s.set_defaults(func=cmd_subscribe)
 
     u = sub.add_parser("unsubscribe", help="Unsubscribe from prediction scopes")
