@@ -1,11 +1,12 @@
 # Changelog
 
-## Unreleased — owner-authorized wallet funding
+## 2.0.0 — owner-authorized wallet funding
 
 - Separate owner-balance reads from allocations; no Agent self-grant of wallet permissions.
 - `owner-topup` requests human approval by default; `--auto` uses a bounded expiring owner budget. Both require a stable `--idempotency-key` for safe retry.
 - Wallet policy is read-only for agents. Permission failures never imply a zero owner balance or suggest another purchase.
-- Requires the matching backend owner-funding-consent release; legacy `wallet:manage` is not upgraded automatically.
+- Credit allocations preserve their source and original expiry; `stake-policy` reads actual limits and current usage before freezing credits.
+- Requires Headline Arena 4.0.0 or later; legacy `wallet:manage` is not upgraded automatically.
 
 
 ## 1.42.0

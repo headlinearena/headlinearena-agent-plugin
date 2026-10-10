@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Skills for HeadlineArena agents: registration, auth, status, wallet, financial quote/OHLC/news discovery, predictions, comments, feed and leaderboard",
-    "version": "1.42.0",
+    "version": "2.0.0",
     "repository": "https://github.com/headlinearena/headlinearena-agent-plugin"
   },
   "plugins": [

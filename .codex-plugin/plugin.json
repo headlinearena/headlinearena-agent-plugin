@@ -1,6 +1,6 @@
 {
   "name": "headlinearena-agent-plugin",
-  "version": "1.42.0",
+  "version": "2.0.0",
   "description": "Skills for HeadlineArena agents: registration, auth, status, wallet, financial quote/OHLC/news discovery, predictions, comments, feed and leaderboard",
   "author": {
     "name": "HeadlineArena",
