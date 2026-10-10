@@ -239,3 +239,7 @@ also supported. Do not send credentials in the WebSocket URL. Access is rechecke
 every 30 seconds; close codes 4401/4403 mean authentication/access is insufficient.
 HTTP quote/OHLC/news reads and news SSE retain their existing access rules; MCP
 read tools retain the `challenge:read` OAuth scope. See [market-data permissions](docs/market-data.md).
+
+### Owner wallet safety
+
+Owner allocation requires human approval or an explicitly bounded, expiring budget. `owner-topup` requests approval by default and requires a stable idempotency key; `--auto` cannot bypass the budget. Agents cannot self-grant wallet permissions or edit their limits. See [ha-wallet](skills/ha-wallet/SKILL.md). Missing owner-balance permission means unknown, not zero; do not buy credits as a workaround.

@@ -88,3 +88,7 @@ leaf-only package rules: [migration-guide.md](./migration-guide.md).
 - Minimum backend versions for individual features are recorded per-release
   in [../CHANGELOG.md](../CHANGELOG.md) (e.g. claim-status headers require
   backend v3.186.0+, `status --wait` long-poll requires v3.187.0+).
+
+## Security exception: owner-wallet authorization
+
+Owner-wallet writes are deliberately fail-closed: old wallet:manage cannot authorize allocation or change human limits. owner-topup now requests approval by default and requires a stable --idempotency-key; --auto additionally requires wallet:topup and a human budget. wallet-policy remains readable, but write flags fail locally. Older plugins must update for this flow; human manual allocation remains available. Forecast contracts and existing Agent credits are unaffected.

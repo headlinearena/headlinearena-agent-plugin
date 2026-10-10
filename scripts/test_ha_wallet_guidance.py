@@ -75,39 +75,15 @@ class GrantedScopeListTests(unittest.TestCase):
 
 
 class WalletSetupGuidanceTests(unittest.TestCase):
-    def test_unknown_payload_shape_does_not_advise_self_grant(self):
-        # Unknown shape -> the neutral check-first message. It mentions
-        # `scope --add` only as a conditional after checking; the assertion
-        # pins the framing, not the absence of the substring.
-        msg = ha._wallet_setup_guidance({"unexpected": ["wallet:manage"]})
-        self.assertIsNotNone(msg)
-        self.assertIn("scope --list", msg)
-        self.assertIn("Check whether you already hold", msg)
-
-    def test_confirmed_missing_scope_advises_self_grant(self):
-        msg = ha._wallet_setup_guidance(["prediction:submit"])
-        self.assertIsNotNone(msg)
-        self.assertIn("scope --add wallet:manage", msg)
-
-    def test_held_scope_reads_owner_balance(self):
-        with mock.patch.object(
-            ha, "authed", return_value=(200, {"available_balance": 500, "currency": "CREDITS"})
-        ) as authed_mock:
-            msg = ha._wallet_setup_guidance(["wallet:manage"])
-        authed_mock.assert_called_once_with("GET", "/agent/owner/balance")
-        self.assertIn("owner-topup", msg)
-        self.assertIn("500", msg)
-
-    def test_held_scope_zero_owner_balance_says_so(self):
-        with mock.patch.object(
-            ha, "authed", return_value=(200, {"available_balance": 0, "currency": "CREDITS"})
-        ):
-            msg = ha._wallet_setup_guidance(["wallet:manage"])
-        self.assertIn("balance is 0", msg)
-
-    def test_held_scope_owner_endpoint_failure_is_silent(self):
-        with mock.patch.object(ha, "authed", return_value=(403, {"detail": "no"})):
-            self.assertIsNone(ha._wallet_setup_guidance(["wallet:manage"]))
+    def test_guidance_never_reads_owner_or_suggests_self_grant_or_purchase(self):
+        for scopes in (None, [], ["wallet:manage"], ["wallet:read"], {"unexpected": []}):
+            with mock.patch.object(ha, "authed") as http:
+                message = ha._wallet_setup_guidance(scopes)
+            http.assert_not_called()
+            self.assertNotIn("scope --add", message)
+            self.assertIn("Requests do not debit", message)
+            self.assertIn("not a new purchase", message)
+            self.assertIn("idempotency-key", message)
 
 
 if __name__ == "__main__":

@@ -1007,84 +1007,52 @@ def _granted_scope_list(granted_scopes):
 
 
 def _wallet_setup_guidance(granted_scopes):
-    """Return a short funding-guidance string for a claimed agent, or None.
-    Advisory only — does NOT auto-grant anything (wallet:manage moves credit,
-    so it must be an explicit opt-in the agent/owner chooses). If the agent
-    already holds wallet:manage, reads the owner's balance and suggests
-    owner-topup; otherwise just points at the self-grant. An unrecognized
-    scope-payload shape gets a neutral check-first message instead of wrongly
-    advising a self-grant the agent may already hold. Never raises."""
-    scopes = _granted_scope_list(granted_scopes)
-    if scopes is None:
-        return ("Wallet funding is opt-in. Check whether you already hold "
-                "`wallet:manage` (`ha.py scope --list`); if so use "
-                "`ha.py owner-balance` / `ha.py owner-topup --amount <N>`, "
-                "otherwise self-grant it first (`ha.py scope --add wallet:manage`).")
-    have = "wallet:manage" in scopes
-    if not have:
-        return ("Wallet funding is opt-in: self-grant `wallet:manage` "
-                "(`ha.py scope --add wallet:manage`), then `ha.py owner-balance` "
-                "/ `ha.py owner-topup --amount <N>`.")
-    try:
-        status, resp = authed("GET", "/agent/owner/balance")
-        if status != 200:
-            return None
-        balance = resp.get("available_balance", 0) or 0
-        currency = resp.get("currency", "CREDITS")
-        if balance <= 0:
-            return ("Your operator's account balance is 0 — they can add credit at "
-                    "https://headlinearena.com/account/credits, then "
-                    "`ha.py owner-topup --amount <N>`.")
-        return (f"Your operator's balance is {balance} {currency}. Fund this agent's wallet: "
-                f"`ha.py owner-topup --amount {balance}` (confirm the amount with your operator; "
-                "optional cap: `ha.py wallet-policy --max-balance <N>`).")
-    except HAFailure:
-        return None
+    """Never infer the owner's balance, self-grant funding or suggest buying."""
+    return ("This agent needs credit allocation, not a new purchase. Ask your operator "
+            "to allocate credit in the agent wallet page, or request approval with "
+            "`ha.py owner-topup --amount <N> --idempotency-key <stable-key>`. "
+            "Requests do not debit the owner. Owner balance is unknown unless explicitly read "
+            "with wallet:read and owner consent. Do not self-grant owner-wallet permissions.")
 
 
 def cmd_owner_balance(args):
-    """Check your human owner's HeadlineArena account credit balance (needs
-    wallet:manage scope — self-grant with `ha.py scope --add wallet:manage`).
-    Only meaningful once the agent has been claimed; an unclaimed agent has
-    no owner yet."""
     status, resp = authed("GET", "/agent/owner/balance")
     if status == 403:
-        fail("Missing wallet:manage scope. Self-grant with: "
-             "ha.py scope --add wallet:manage", status)
-    if status == 404:
-        fail("This agent has not been claimed by a human account yet.", status)
+        fail("Owner balance is unavailable: wallet:read and separate owner consent are required. "
+             "Do not infer a zero balance or self-grant permissions.", status)
     expect(status, resp)
     out(resp)
 
 
 def cmd_owner_topup(args):
-    """Fund this agent's own wallet from the owner's account balance (needs
-    wallet:manage scope). Subject to any wallet-policy per_tx_limit /
-    max_balance the owner has set."""
-    status, resp = authed("POST", "/agent/owner/topup", {"amount": args.amount})
+    """Default: ask the human to approve this exact amount. --auto consumes
+    an existing human budget and additionally needs wallet:topup. Stable key
+    is mandatory for safe retry; never switch keys after an unknown outcome."""
+    path = "/agent/owner/topup" if args.auto else "/agent/owner/topup-requests"
+    status, resp = authed("POST", path, {"amount": args.amount, "idempotency_key": args.idempotency_key})
     if status == 403:
-        fail("Missing wallet:manage scope. Self-grant with: "
-             "ha.py scope --add wallet:manage", status)
+        fail("Owner authorization required. Ask the owner to review the request or "
+             "configure a budget in the platform. Do not self-grant permissions or buy credit.", status)
+    expect(status, resp)
+    out(resp)
+
+
+def cmd_funding_consent(args):
+    status, resp = authed("GET", "/agent/owner/funding-consent")
+    expect(status, resp)
+    out(resp)
+
+
+def cmd_funding_requests(args):
+    status, resp = authed("GET", "/agent/owner/topup-requests")
     expect(status, resp)
     out(resp)
 
 
 def cmd_wallet_policy(args):
-    """View or set this agent's own wallet spending policy (needs
-    wallet:manage scope): max_balance (cap on total wallet holdings) and
-    per_tx_limit (cap on a single top-up — NOT a per-prediction spend cap;
-    the platform has no separate per-prediction credit limit today, staking
-    amounts on macro pools are set per-call via `macro-predict --amount`).
-    Omit both --max-balance and --per-tx-limit to just view the current
-    policy."""
-    if args.max_balance is None and args.per_tx_limit is None:
-        status, resp = authed("GET", "/agent/owner/wallet-policy")
-    else:
-        body = {"max_balance": args.max_balance, "per_tx_limit": args.per_tx_limit}
-        status, resp = authed("POST", "/agent/owner/wallet-policy", body)
-    if status == 403:
-        fail("Missing wallet:manage scope. Self-grant with: "
-             "ha.py scope --add wallet:manage", status)
+    if args.max_balance is not None or args.per_tx_limit is not None:
+        fail("Only the human owner can set wallet limits in the platform; agents cannot relax caps.", 403)
+    status, resp = authed("GET", "/agent/owner/wallet-policy")
     expect(status, resp)
     out(resp)
 
@@ -1146,6 +1114,8 @@ def cmd_scope(args):
     (plural), which lists prediction-MARKET subscriptions (GC/BTC/CPI/...) under
     /agent/prediction-scope. Granting/removing forces a token refresh so the
     change is effective immediately."""
+    if set(args.add or []) & {"wallet:manage", "wallet:read", "wallet:topup"}:
+        fail("Owner-wallet permissions must be issued by the human owner, not self-granted.", 403)
     if not (args.add or args.remove or args.list):
         fail("specify --add, --remove, or --list. "
              "(For prediction-market subscriptions like GC/BTC, use `ha.py scopes`/`subscribe`.)")
@@ -1929,13 +1899,17 @@ def main():
     ch.add_argument("--limit", type=int, default=20)
     ch.set_defaults(func=cmd_credits_history)
 
-    sub.add_parser("owner-balance", help="Check your human owner's account credit balance (needs wallet:manage scope)").set_defaults(func=cmd_owner_balance)
+    sub.add_parser("owner-balance", help="Read owner balance (wallet:read plus separate owner consent)").set_defaults(func=cmd_owner_balance)
 
-    ot = sub.add_parser("owner-topup", help="Fund this agent's own wallet from the owner's balance (needs wallet:manage scope)")
-    ot.add_argument("--amount", required=True, type=float)
+    ot = sub.add_parser("owner-topup", help="Request a human-approved credit allocation; --auto uses an existing budget")
+    ot.add_argument("--amount", required=True)
+    ot.add_argument("--idempotency-key", required=True, help="Reuse this stable key on retry")
+    ot.add_argument("--auto", action="store_true", help="Use the owner-approved budget; needs wallet:topup")
     ot.set_defaults(func=cmd_owner_topup)
+    sub.add_parser("funding-consent", help="Read this agent's owner-issued funding budget").set_defaults(func=cmd_funding_consent)
+    sub.add_parser("funding-requests", help="Read pending allocation requests").set_defaults(func=cmd_funding_requests)
 
-    wp = sub.add_parser("wallet-policy", help="View/set this agent's own wallet spending limits (needs wallet:manage scope)")
+    wp = sub.add_parser("wallet-policy", help="Read owner-configured wallet limits; agents cannot set limits")
     wp.add_argument("--max-balance", type=float, default=None, dest="max_balance")
     wp.add_argument("--per-tx-limit", type=float, default=None, dest="per_tx_limit")
     wp.set_defaults(func=cmd_wallet_policy)
