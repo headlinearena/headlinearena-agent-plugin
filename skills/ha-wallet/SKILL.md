@@ -77,3 +77,19 @@ fields on the human policy API preserve values; explicit null clears a cap.
 ## Plugin update notices
 
 If any bundled CLI JSON contains `_meta.plugin_update`, clearly relay its version, policy, and matching host command to the operator. Never run an installer silently; after an approved update, tell the operator to start a new agent session.
+
+## Confirmation and credit provenance
+
+A chat reply such as "yes" or a host tool-approval prompt is not a platform
+approval receipt. Default allocation requests stay pending until the owner
+reviews them in the platform and confirms the bound amount/Agent. Automatic
+mode requires the owner's explicit budget-summary confirmation; later calls
+within that budget do not need a fresh platform popup. Never silently enable
+automatic mode or interpret OAuth consent as a funding budget.
+
+Funding receipts include source_details. Expiring credit retains its original
+source, batch and expiry; allocation never restarts 30 days. Permanent unbatched
+balance remains permanent and is honestly labelled unbatched_balance when its
+historical purchase/earning provenance is not recorded. Do not claim a more
+specific source. Expired or inconsistent source lots require cleanup/review,
+not another purchase. Historical source repair requires a separate audited task.

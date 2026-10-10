@@ -155,3 +155,5 @@ HTTP quote/OHLC/news reads and news SSE retain their existing access rules; MCP
 read tools retain the `challenge:read` OAuth scope. See [market-data permissions](market-data.md).
 
 Owner funding is governed by [ha-wallet](../skills/ha-wallet/SKILL.md). OAuth re-consent alone never authorizes an unbounded debit. A pending request is not a completed allocation.
+
+Default funding requests require an owner approval click and confirmation in the platform. Automatic mode requires prior owner budget confirmation; host tool prompts are not a substitute. Receipts carry original source/expiry slices, and allocation does not restart grant validity.
