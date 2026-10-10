@@ -1037,6 +1037,15 @@ def cmd_owner_topup(args):
     out(resp)
 
 
+def cmd_stake_policy(args):
+    """Read own actual prediction-stake caps, separately from wallet holdings."""
+    status, resp = authed("GET", "/agent/wallet/stake-policy")
+    if status == 403:
+        fail("Stake-policy read needs credits:read on the updated backend. Do not self-grant owner-wallet permissions. Ask the operator to check backend compatibility.", status)
+    expect(status, resp)
+    out(resp)
+
+
 def cmd_funding_consent(args):
     status, resp = authed("GET", "/agent/owner/funding-consent")
     expect(status, resp)
@@ -1906,6 +1915,7 @@ def main():
     ot.add_argument("--idempotency-key", required=True, help="Reuse this stable key on retry")
     ot.add_argument("--auto", action="store_true", help="Use the owner-approved budget; needs wallet:topup")
     ot.set_defaults(func=cmd_owner_topup)
+    sub.add_parser("stake-policy", help="Read actual per-forecast, locked and UTC-daily stake caps").set_defaults(func=cmd_stake_policy)
     sub.add_parser("funding-consent", help="Read this agent's owner-issued funding budget").set_defaults(func=cmd_funding_consent)
     sub.add_parser("funding-requests", help="Read pending allocation requests").set_defaults(func=cmd_funding_requests)
 

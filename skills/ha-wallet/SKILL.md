@@ -95,3 +95,21 @@ specific source. Expired or inconsistent source lots require cleanup/review,
 not another purchase. Historical source repair requires a separate audited task.
 
 The funding receipt’s top-level expires_at is the approval/budget deadline. Credit validity comes from each source_details entry’s expires_at; null there means non-expiring credit. Do not treat the approval deadline as credit expiry.
+
+## Verify staking separately
+
+Before any forecast that freezes credits, read `ha.py stake-policy` (own Agent;
+credits:read). MCP `ha_credits` returns the same actual stake_policy snapshot.
+Wallet max_balance/per_tx_limit only constrain holdings/allocation and cannot
+stand in for per-forecast stake caps. Use the challenge's own stake_limits too.
+
+`configured:false, mode:unlimited` is a verified absence of an Agent policy,
+not an invented default limit. The balance and challenge bounds still apply.
+`require_confirmation_above` is currently informational; confirmation_enforced
+is false. Do not claim it blocks writes or authorizes a stake. A read snapshot
+is not a reservation; the write path rechecks limits. Do not submit probes to
+learn caps or automatically change the owner's policy.
+
+If an open list conflicts with formal detail/contract discovery, stop that
+submission. Pre-cutover Civic shadow rounds must remain hidden/non-submittable
+even when generic rows say open; use the canonical period and governance gates.

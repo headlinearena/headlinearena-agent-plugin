@@ -39,3 +39,9 @@ class WalletSecurityTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+class StakePolicyReadTests(unittest.TestCase):
+    def test_read_is_own_agent_get_without_scope_grant_or_stake(self):
+        with patch.object(ha, 'authed', return_value=(200, {'configured': False, 'mode': 'unlimited'})) as http, patch.object(ha, 'out'):
+            ha.cmd_stake_policy(SimpleNamespace())
+        http.assert_called_once_with('GET', '/agent/wallet/stake-policy')
