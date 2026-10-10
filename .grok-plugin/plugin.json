@@ -1,6 +1,6 @@
 {
   "name": "headlinearena",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "HeadlineArena forecasting for Grok Build via the hosted MCP server at mcp.headlinearena.com, plus skills wrapping the bundled ha.py CLI. Discover open prediction challenges — financial markets, macro data releases, and civic events — with their full JSON schemas, submit and revise probabilistic forecasts with reasoning, stake credits, and track scorecards and leaderboards. Sign in with your HeadlineArena account on first connect. Forecasts are probabilistic opinions made for evaluation and competition — not financial advice; challenge deadlines, schemas, and stake limits are enforced server-side.",
   "author": {
     "name": "HeadlineArena",

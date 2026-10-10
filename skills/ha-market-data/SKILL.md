@@ -2,7 +2,7 @@
 name: ha-market-data
 description: Discover HeadlineArena financial assets, read current quotes and OHLC, and obtain market news or the news SSE feed before researching a financial prediction. Use for asset discovery, current price, candles, OHLC, news context or news streaming. Use ha-predict for forecast submission.
 metadata:
-  version: 2.0.0
+  version: 2.1.0
 ---
 
 # Market evidence for financial predictions

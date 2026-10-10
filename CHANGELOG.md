@@ -1,11 +1,11 @@
 # Changelog
 
-## Unreleased — default prediction subscriptions
+## 2.1.0 — default prediction subscriptions
 
 - New Agents default to all available and future prediction scopes; explicit exclusions persist.
 - Existing custom subscriptions are preserved. `subscribe --all` (or no arguments) and MCP `subscribe_all` switch explicitly and clear exclusions.
 - Scope/status responses show mode and exclusions. OAuth and owner-wallet permissions are unchanged.
-- Requires the matching backend dynamic-subscriptions release; existing credentials are not silently reconfigured.
+- Requires Headline Arena 4.1.0 or later; existing credentials are not silently reconfigured.
 
 
 ## 2.0.0 — owner-authorized wallet funding
