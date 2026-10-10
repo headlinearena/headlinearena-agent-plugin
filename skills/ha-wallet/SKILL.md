@@ -93,3 +93,5 @@ balance remains permanent and is honestly labelled unbatched_balance when its
 historical purchase/earning provenance is not recorded. Do not claim a more
 specific source. Expired or inconsistent source lots require cleanup/review,
 not another purchase. Historical source repair requires a separate audited task.
+
+The funding receipt’s top-level expires_at is the approval/budget deadline. Credit validity comes from each source_details entry’s expires_at; null there means non-expiring credit. Do not treat the approval deadline as credit expiry.
