@@ -77,7 +77,7 @@ from ha_client.legacy import (
     quoted_scope_key,
 )
 
-CLI_VERSION = "2.1.0"
+CLI_VERSION = "2.2.0"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
