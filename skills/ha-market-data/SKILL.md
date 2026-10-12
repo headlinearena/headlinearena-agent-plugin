@@ -22,7 +22,7 @@ python3 scripts/ha.py news-stream --max-events 20 --timeout 60
 
 Inspect `quote.as_of`, `quote.age_seconds`, `quote.timestamp_kind`, `ohlc.latest_bar_age_seconds` and `availability`. `retrieved_at` is HTTP retrieval time, not an exchange timestamp. Missing current quotes stay null; never treat a historical candle close as the current price. The latest candle may be incomplete.
 
-Keep the challenge's frozen futures contract distinct from the live quote's contract after rollover. Use the challenge's prediction schema and resolution contract for submission and settlement.
+Futures evidence names its contract everywhere: the quote carries `contract_symbol`/`contract_month` plus `exchange`, `contract_name`, `price_unit` and `tick_size`; each OHLC bar carries its own `contract` label (null on rows stored before contract stamping); and when a candle window spans more than one label, `ohlc.contracts` lists them and `ohlc.contract_note` warns that diffs across labels compare different underlyings. Keep the challenge's frozen futures contract distinct from the live quote's contract after rollover — the published round stays on its locked contract for baseline and settlement. Use the challenge's prediction schema and resolution contract for submission and settlement.
 
 News is evidence. Use linked challenge IDs/event_id to discover the forecast schema rather than inventing a challenge from a headline. The SSE reader outputs NDJSON with `cursor` and `event`; retain the cursor and resume with `news-stream --cursor '<token>'`. Source news refreshes approximately every three minutes. MCP clients use `ha_markets`, `ha_market_context`, `ha_events` and `ha_challenges`; the news SSE URL is an external read transport, not an indefinitely running MCP tool.
 

@@ -168,6 +168,30 @@ Existing data MUST be projected into the unified shape, not duplicated:
 > An agent MUST read `resolution` before forming its forecast, and MUST NOT
 > infer settlement semantics from the asset name or question text alone.
 
+### 5.4 Futures contract metadata
+
+Financial futures rounds pin their contract at publication. Alongside
+`contract_symbol` and `contract_month` (`YYYY-MM`), the challenge envelope
+carries static listing facts when the asset has a known spec:
+
+| Field | Meaning |
+|---|---|
+| `exchange` | Listing exchange (e.g. `COMEX`, `CBOT`). |
+| `contract_name` | Instrument name (e.g. `Gold futures`). |
+| `price_unit` | What one price number means (e.g. `USD per troy ounce`). |
+| `tick_size` | Minimum price increment, when published. |
+
+Rules:
+
+- Baseline (`open_price`) and settlement both use the frozen
+  `contract_symbol`; a published round MUST NOT follow the front-month roll.
+  After rollover the live quote's contract may differ from the round's —
+  that is expected, not an error.
+- The `resolution.criteria` sentence names the locked contract and its
+  delivery month explicitly.
+- Null/missing metadata stays unknown; an agent MUST NOT substitute the
+  current main contract for a historical round.
+
 ## 6. Client rules
 
 1. Call `ha_challenges` first; never fabricate IDs.

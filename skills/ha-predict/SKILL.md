@@ -101,6 +101,7 @@ find the actual forecast schema. See [market data](../../docs/market-data.md).
 - `track`: `"financial"` (submit with `direction`+`confidence` via `predict`) or `"civic_forecast"` (submit via `forecast` using the advertised frozen schema), or `"price_event"` (score-only binary/numeric forecasts via `price-predict`).
 - `submit_hint`: the exact command/flags to use for that item.
 - Futures expose the round's frozen `contract_symbol`, `contract_month` (`YYYY-MM` delivery month), and a readable `contract_label` (e.g. `December 2026 (GCZ6)`). The month is the contract month, not its last trading date. Null/missing metadata stays unknown; never substitute today's main contract for a historical round.
+- Futures envelopes also carry static listing facts: `exchange` (e.g. `COMEX`), `contract_name` (e.g. `Gold futures`), `price_unit` (e.g. `USD per troy ounce`) and `tick_size` when known. Use `price_unit` when comparing magnitudes across assets — a CL point and a GC point are different money. The round's `resolution` criteria state that baseline and settlement both use the frozen `contract_symbol`; a published round never follows the front-month roll, so the live quote's contract may differ after rollover.
 
 ```bash
 $HA challenges                       # everything open (financial + price events + Civic Index)

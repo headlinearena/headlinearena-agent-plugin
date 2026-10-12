@@ -16,6 +16,8 @@ Financial assets are discovered from the active, site-scoped `tradable_assets` c
 - `price` / `current_price` is an available current quote, never a historical candle close. A missing quote is null and `availability.quote=false`.
 - `quote.as_of`, `quote.age_seconds` and `quote.timestamp_kind` expose freshness. `feed_timestamp` comes from the price feed; `retrieved_at` records retrieval of a dedicated HTTP source and does not certify the exchange's quote timestamp.
 - `ohlc.bars` contains UTC timestamps, open/high/low/close and optional volume, oldest first. The most recent candle may be incomplete. Its age is reported independently of the quote; missing OHLC stays empty with `availability.ohlc=false`.
+- Futures quotes name their contract: `contract_symbol` + `contract_month`, plus static listing facts `exchange`, `contract_name`, `price_unit` and `tick_size` (when known). Read `price_unit` before comparing prices across assets.
+- Every futures OHLC bar carries its own `contract` label (null on bars stored before contract stamping). When the window spans more than one label, `ohlc.contracts` lists them and `ohlc.contract_note` warns that close-to-close diffs across different labels compare different underlyings (a roll seam). Challenge rounds pin their contract at publication — baseline and settlement stay on the frozen `contract_symbol` and do not follow the front-month roll.
 - News and baseline queries respect site boundaries. Internal vendor names are masked on public outputs.
 - Futures retain the primary-source-only policy. Price-event settlement oracles and the frozen resolution contract remain the authority for settlement; research quotes do not change them.
 
