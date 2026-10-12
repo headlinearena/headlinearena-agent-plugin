@@ -56,6 +56,8 @@ from ha_client.contracts import (
     stake_amount_error as _stake_amount_error,
 )
 from ha_client.prediction import (
+    parse_forecast_context,
+    build_unified_predict_body,
     build_civic_forecast_body,
     build_forecast_payload as _build_forecast_payload,
     build_legacy_macro_body,
@@ -75,7 +77,7 @@ from ha_client.legacy import (
     quoted_scope_key,
 )
 
-CLI_VERSION = "2.1.0"
+CLI_VERSION = "2.2.0"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -1473,10 +1475,20 @@ def cmd_challenges(args):
 
 
 def cmd_predict(args):
+    context = parse_forecast_context(getattr(args, "forecast_context", None))
+    decision = (context or {}).get("decision")
+    reevaluation = decision in ("hold", "abstain")
+    if reevaluation:
+        if getattr(args, "expected_revision", None) is None or getattr(args, "amount", None) is not None or args.revision:
+            fail("hold/abstain requires --expected-revision, no --amount and no --revision")
+        if decision == "hold" and getattr(args, "probabilities", None) is None:
+            fail("hold requires the complete --probabilities vector")
+    elif not args.reasoning:
+        fail("--reasoning is required for ordinary predictions")
     probabilities = parse_probabilities_arg(getattr(args, "probabilities", None))
     if probabilities is not None:
         probabilities = validate_ternary_vector(probabilities)
-    elif args.direction is None or args.confidence is None:
+    elif decision != "abstain" and (args.direction is None or args.confidence is None):
         fail("submit either --probabilities, or both --direction and --confidence")
     if args.direction is not None and args.direction not in ("bullish", "bearish", "neutral"):
         fail("direction must be bullish, bearish, or neutral")
@@ -1501,6 +1513,14 @@ def cmd_predict(args):
         body["summary"] = args.summary
     if amount is not None:
         body["amount"] = amount
+    if args.reasoning is None:
+        body.pop("reasoning", None)
+    if context is not None:
+        body["forecast_context"] = context
+    for field in ("expected_revision", "idempotency_key", "revision_reason", "trigger_event_id"):
+        value = getattr(args, field, None)
+        if value is not None:
+            body[field] = value
     path = f"/eval/challenges/{args.challenge_id}/predict"
     status, resp = authed("POST", path, body)
     detail = str(resp.get("detail", ""))
@@ -1520,6 +1540,35 @@ def cmd_predict(args):
             f"leaderboard. Review this challenge's signal history with `ha.py paper-signals {args.challenge_id}`."
         )
     out(resp)
+
+
+def cmd_ha_predict(args):
+    prediction = None
+    if args.prediction is not None:
+        try:
+            prediction = json.loads(args.prediction)
+        except ValueError:
+            fail("--prediction must be JSON matching the discovered prediction_schema")
+    body = build_unified_predict_body(args.challenge_id, prediction=prediction,
+        reasoning=args.reasoning, summary=args.summary, amount=args.amount,
+        expected_revision=args.expected_revision, idempotency_key=args.idempotency_key,
+        forecast_context=args.forecast_context, revision_reason=args.revision_reason,
+        trigger_event_id=args.trigger_event_id)
+    status, response = authed("POST", "/agent/ha/predict", body)
+    # No legacy fallback: it would change contract/reassessment semantics.
+    expect(status, response)
+    out(response)
+
+
+def cmd_forecast_contexts(args):
+    params = {"limit": args.limit}
+    if args.revision_number is not None:
+        params["revision_number"] = args.revision_number
+    if args.cursor is not None:
+        params["cursor"] = args.cursor
+    status, response = authed("GET", f"/eval/challenges/{args.challenge_id}/forecast-contexts?" + urllib.parse.urlencode(params))
+    expect(status, response)
+    out(response)
 
 
 def cmd_price_predict(args):
@@ -1980,13 +2029,32 @@ def main():
                          '\'{"bearish": 0.60, "neutral": 0.35, "bullish": 0.05}\'. '
                          'Brier-scored verbatim; direction/confidence are derived as the argmax, '
                          'so they may be omitted (if given they must match the argmax).')
-    pr.add_argument("--reasoning", required=True)
+    pr.add_argument("--reasoning", default=None, help="required for ordinary predictions; optional for reassessment")
     pr.add_argument("--summary", default=None)
     pr.add_argument("--revision", action="store_true", help="revise an existing prediction")
     pr.add_argument("--amount", type=float, default=None,
                     help="optional credit stake bound to this prediction, landing in the --direction bin "
                          "(needs credits:stake — self-grant with `ha.py scope --add credits:stake`)")
+    for flag in ("forecast-context", "idempotency-key", "revision-reason", "trigger-event-id"):
+        pr.add_argument("--" + flag, default=None)
+    pr.add_argument("--expected-revision", type=int, default=None)
     pr.set_defaults(func=cmd_predict)
+
+    up = sub.add_parser("ha-predict", help="Canonical prediction or private reassessment (server feature gate applies)")
+    up.add_argument("challenge_id")
+    up.add_argument("--prediction", default=None, help="JSON matching the discovered prediction_schema")
+    for flag in ("reasoning", "summary", "forecast-context", "idempotency-key", "revision-reason", "trigger-event-id"):
+        up.add_argument("--" + flag, default=None)
+    up.add_argument("--amount", type=float, default=None)
+    up.add_argument("--expected-revision", type=int, default=None)
+    up.set_defaults(func=cmd_ha_predict)
+
+    cr = sub.add_parser("forecast-contexts", help="Read your own private optional context receipts")
+    cr.add_argument("challenge_id")
+    cr.add_argument("--revision-number", type=int, default=None)
+    cr.add_argument("--limit", type=int, default=20)
+    cr.add_argument("--cursor", default=None)
+    cr.set_defaults(func=cmd_forecast_contexts)
 
     pe = sub.add_parser("price-predict", help="Submit a score-only binary/numeric price-event forecast")
     pe.add_argument("challenge_id")
