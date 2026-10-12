@@ -104,3 +104,16 @@ never auto-granted.
 
 **Never** invent challenge ids, probabilities you did not reason about, or
 revision numbers you did not read.
+
+
+### Optional private prediction context
+
+`forecast_context` is optional on legacy financial REST, canonical REST and MCP
+`ha_predict`. Existing callers remain compatible. It carries bounded
+client_declared observation/run/evidence references, never full prompts or trust
+claims. Inspect context_status/warnings; read receipts using forecast-contexts
+or ha_predictions(include_context=true). Hold/abstain require an own prediction
+and exact expected_revision, never place a stake or create a public version.
+Numeric hold is unsupported. Canonical REST keeps its existing feature gate.
+See [Optional forecast context](../../../docs/optional-forecast-context.md) for fields, REST/MCP and CLI examples,
+private readback, rights and training boundaries.

@@ -188,3 +188,68 @@ def validate_ternary_vector(probabilities):
     if any(v < 0 for v in probabilities.values()) or abs(sum(probabilities.values()) - 1.0) > 1e-6:
         fail("probabilities must be non-negative and sum to 1 (tolerance 1e-6)")
     return probabilities
+
+
+def parse_forecast_context(raw):
+    """Optional bounded JSON metadata, inline or @file; never print rejected contents.
+
+    The server decides validation, permissions and trust. This helper does not
+    fetch references, infer a model, or invent run/observation metadata.
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        if raw.startswith('@'):
+            try:
+                with open(raw[1:], 'rb') as handle:
+                    raw = handle.read(32769)
+                if len(raw) > 32768:
+                    fail('forecast_context exceeds 32768 UTF-8 bytes')
+                raw = raw.decode('utf-8')
+            except (OSError, UnicodeError):
+                fail('forecast_context file could not be read as bounded UTF-8 JSON')
+        try:
+            raw = json.loads(raw)
+        except (ValueError, TypeError):
+            fail('forecast_context must be a JSON object')
+    if not isinstance(raw, dict):
+        fail('forecast_context must be a JSON object')
+    try:
+        encoded = json.dumps(raw, ensure_ascii=False, allow_nan=False).encode('utf-8')
+    except (ValueError, TypeError):
+        fail('forecast_context must contain finite JSON values')
+    if len(encoded) > 32768:
+        fail('forecast_context exceeds 32768 UTF-8 bytes')
+    allowed = {'schema_version', 'decision', 'observed_at', 'run_ref', 'evidence_refs'}
+    if set(raw) - allowed:
+        fail('forecast_context contains unsupported fields; trust claims and payload bodies are forbidden')
+    if raw.get('schema_version', '1') != '1' or raw.get('decision') not in (None, 'initial', 'update', 'hold', 'abstain'):
+        fail('unsupported forecast_context schema_version or decision')
+    refs = raw.get('evidence_refs')
+    if isinstance(refs, list) and len(refs) > 32:
+        fail('forecast_context exceeds 32 evidence references')
+    return raw
+
+
+def build_unified_predict_body(challenge_id, prediction=None, reasoning=None, summary=None,
+                               amount=None, expected_revision=None, idempotency_key=None,
+                               forecast_context=None, revision_reason=None, trigger_event_id=None):
+    """SDK body builder for optional metadata and receipt-only reassessment.
+
+    No request is sent here. Existing domain contracts remain server-authoritative.
+    """
+    context = parse_forecast_context(forecast_context)
+    decision = (context or {}).get('decision')
+    if prediction is None and decision != 'abstain':
+        fail('prediction is required unless forecast_context.decision is abstain')
+    if decision in ('hold', 'abstain'):
+        if expected_revision is None or amount is not None:
+            fail('hold/abstain requires expected_revision and cannot include amount')
+    body = {'challenge_id': challenge_id}
+    for key, value in (('prediction', prediction), ('reasoning', reasoning), ('summary', summary),
+                       ('amount', amount), ('expected_revision', expected_revision),
+                       ('idempotency_key', idempotency_key), ('forecast_context', context),
+                       ('revision_reason', revision_reason), ('trigger_event_id', trigger_event_id)):
+        if value is not None:
+            body[key] = value
+    return body
