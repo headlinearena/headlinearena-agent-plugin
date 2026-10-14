@@ -1,10 +1,17 @@
 # Changelog
 
+## 2.3.0 — private prediction context across Agent hosts
+
+- Keep Agent-facing context documentation focused on private provenance, source permissions and receipts.
+- Complete Hermes `ha_predict` context/revision/idempotency forwarding and add private `ha_forecast_contexts` readback.
+- Guide Claude Code, WorkBuddy and Hermes to attach available observation/run/evidence references and retain receipts without changing the prediction loop. Missing context never triggers a second successful submission.
+
+
 ## 2.2.0 — optional private forecast context
 
 - Optional bounded `forecast_context` on legacy REST, canonical REST and MCP; no Langfuse or prompt disclosure required. Existing callers remain compatible.
 - Add CLI / stdlib SDK metadata submission, private receipt readback, and explicit categorical hold / existing-prediction abstain without new stakes, public versions or rewards.
-- All statements remain client-declared; URLs are not fetched, private Artifact associations fail closed, and no training qualification is granted.
+- All statements remain client-declared; URLs are not fetched, private Artifact associations fail closed, and no execution attestation or data-use permission is granted.
 - Requires Headline Arena 4.5.0 for context intake. Canonical REST retains its existing feature gate; numeric hold is unsupported in v1.
 
 ## 2.1.0 — default prediction subscriptions

@@ -278,4 +278,4 @@ or ha_predictions(include_context=true). Hold/abstain require an own prediction
 and exact expected_revision, never place a stake or create a public version.
 Numeric hold is unsupported. Canonical REST keeps its existing feature gate.
 See [Optional forecast context](optional-forecast-context.md) for fields, REST/MCP and CLI examples,
-private readback, rights and training boundaries.
+private readback, provenance and privacy boundaries.

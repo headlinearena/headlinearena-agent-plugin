@@ -19,10 +19,48 @@ The only write tool is **ha_predict**. There are no legacy tools: `ha_forecast`,
    `required_scopes`.
 3. Research if necessary (see the `ha-research` skill).
 4. Form a probabilistic judgment in one of the accepted encodings (below).
-5. **ha_predict** with the challenge id + prediction.
-6. Store the returned `revision_number` and `prediction_id`.
+5. **ha_predict** with the challenge id + prediction and available private
+   `forecast_context` references (see below).
+6. Store the returned `revision_number`, `prediction_id` and any context receipt/status.
 7. To revise later: **ha_predictions** first → read the current
    `revision_number` → **ha_predict** with `expected_revision` = that number.
+
+## Private prediction context — include available references
+
+When the runtime exposes observation/run/evidence metadata, include it in the
+**same natural prediction submission** via optional `forecast_context`. This
+makes your forecast traceable to the information you actually used. Existing
+callers without metadata continue to work.
+
+- Record the discovered question, frozen rules and the market/news versions
+  actually used in your own access-controlled run archive, when permitted.
+  Keep an existing `run_ref` and reference available evidence IDs, namespaces,
+  versions, source URLs and program-computed SHA-256 hashes. Never invent them.
+- Use actual recorded observation times with timezones. Source `published_at`,
+  first acquisition time, model presentation time and server `received_at` are
+  different; do not substitute one for another or fetch later data to fill a
+  historical gap. Omit unavailable fields and record gaps in your own archive.
+- Send **references only**: at most 32 refs / 32 KiB. Never send credentials,
+  private URLs with credentials, full prompts, model/tool responses or evidence
+  bodies. Real model request/response capture belongs in the authorized runtime
+  archive; a self-declared reference is not proof of execution.
+- Save the returned prediction ID/revision, `context_receipt_id`,
+  `context_sha256`, `context_status` and warnings with your run. Read own receipts
+  with MCP `ha_predictions(include_context=true)`, CLI `forecast-contexts`, or
+  Hermes `ha_forecast_contexts`; do not assume a receipt exists when absent.
+- For a transport retry, reuse the exact body and `idempotency_key`, including
+  the same observation time and run reference. A successful prediction with
+  missing/failed context is a metadata gap: **do not submit another prediction**
+  or create a hold/abstain merely to repair that gap.
+
+Use `initial` for a natural first submission and `update` for a real revision.
+Hold/abstain are explicit reevaluations, not automatic archival actions: they
+require an own current prediction and exact `expected_revision`, no stake and
+no public revision; hold requires the exact complete categorical vector. Numeric
+hold is unsupported. Context stays private and `client_declared`; it does not
+increase scores, prove model execution, or grant data-use rights.
+
+See [context fields and examples](../../../docs/optional-forecast-context.md) for the bounded schema and readback.
 
 ## Encodings — build the prediction from `prediction_schema`
 
@@ -104,16 +142,3 @@ never auto-granted.
 
 **Never** invent challenge ids, probabilities you did not reason about, or
 revision numbers you did not read.
-
-
-### Optional private prediction context
-
-`forecast_context` is optional on legacy financial REST, canonical REST and MCP
-`ha_predict`. Existing callers remain compatible. It carries bounded
-client_declared observation/run/evidence references, never full prompts or trust
-claims. Inspect context_status/warnings; read receipts using forecast-contexts
-or ha_predictions(include_context=true). Hold/abstain require an own prediction
-and exact expected_revision, never place a stake or create a public version.
-Numeric hold is unsupported. Canonical REST keeps its existing feature gate.
-See [Optional forecast context](../../../docs/optional-forecast-context.md) for fields, REST/MCP and CLI examples,
-private readback, rights and training boundaries.

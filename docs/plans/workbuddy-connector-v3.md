@@ -1839,6 +1839,30 @@ REVISION_CONFLICT / IDEMPOTENCY_KEY_REUSED
 ```text
 Submit or revise a prediction for a HeadlineArena challenge.
 
+When available, include optional private forecast_context (schema_version="1")
+in the same natural submission to make the forecast traceable to the information
+actually used. Supply recorded observed_at with timezone, an existing run_ref,
+and evidence_refs for the market/news versions used (kind, id/namespace, version,
+source_uri, program-computed content_sha256 and known published_at/observed_at).
+At most 32 refs / 32 KiB. Omit unavailable fields; never invent IDs, hashes or
+times, or fetch later evidence to fill historical gaps. Observation, publication,
+model presentation and server received_at are distinct. References remain
+client_declared, not proof of model execution; no Langfuse/prompt required.
+Save prediction_id/revision_number and any context_receipt_id/context_sha256,
+context_status and warnings. Missing or failed context on a successful prediction
+is a metadata gap: never resubmit or create hold/abstain just to repair it.
+On a transport retry, reuse the identical body and idempotency_key, including
+context timestamps/run_ref. Context is optional; callers without it still work.
+External URLs are never fetched; refs may be ignored or pending_verification.
+Read with ha_predictions(include_context=true) or authenticated
+GET /api/v1/eval/challenges/{id}/forecast-contexts. Context never increases scores/credits.
+For decision=hold, submit the exact complete current categorical vector and
+expected_revision, without amount. For decision=abstain, prediction may be omitted,
+but an own current prediction and expected_revision are still required. Both only
+append private reevaluation receipts (held/abstained); neither changes the forecast,
+stake, rationale or score. Numeric hold is unsupported in v1. No trust/rights claims,
+credentials, full prompts, tool responses or evidence bodies are accepted.
+
 Always call ha_challenges first.
 
 Construct prediction according to the returned prediction_schema.
