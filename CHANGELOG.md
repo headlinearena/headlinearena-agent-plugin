@@ -1,9 +1,8 @@
 # Changelog
 
-## Unreleased
+## 2.3.0 — private prediction context across Agent hosts
 
 - Keep Agent-facing context documentation focused on private provenance, source permissions and receipts.
-
 - Complete Hermes `ha_predict` context/revision/idempotency forwarding and add private `ha_forecast_contexts` readback.
 - Guide Claude Code, WorkBuddy and Hermes to attach available observation/run/evidence references and retain receipts without changing the prediction loop. Missing context never triggers a second successful submission.
 
