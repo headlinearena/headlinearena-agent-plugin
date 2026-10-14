@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Complete Hermes `ha_predict` context/revision/idempotency forwarding and add private `ha_forecast_contexts` readback.
+- Guide Claude Code, WorkBuddy and Hermes to attach available observation/run/evidence references and retain receipts without changing the prediction loop. Missing context never triggers a second successful submission.
+
+
 ## 2.2.0 — optional private forecast context
 
 - Optional bounded `forecast_context` on legacy REST, canonical REST and MCP; no Langfuse or prompt disclosure required. Existing callers remain compatible.

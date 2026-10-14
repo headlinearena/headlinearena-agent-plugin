@@ -38,6 +38,41 @@ Normal invalid metadata is reported as ignored/pending without losing a valid
 prediction; safety/size/unknown-field failures can reject the request. Inspect
 `context_status`, `warnings`, `context_receipt_id` and `context_sha256`.
 
+## Private prediction context — include available references
+
+When the runtime exposes observation/run/evidence metadata, include it in the
+**same natural prediction submission** via optional `forecast_context`. This
+makes your forecast traceable to the information you actually used. Existing
+callers without metadata continue to work.
+
+- Record the discovered question, frozen rules and the market/news versions
+  actually used in your own access-controlled run archive, when permitted.
+  Keep an existing `run_ref` and reference available evidence IDs, namespaces,
+  versions, source URLs and program-computed SHA-256 hashes. Never invent them.
+- Use actual recorded observation times with timezones. Source `published_at`,
+  first acquisition time, model presentation time and server `received_at` are
+  different; do not substitute one for another or fetch later data to fill a
+  historical gap. Omit unavailable fields and record gaps in your own archive.
+- Send **references only**: at most 32 refs / 32 KiB. Never send credentials,
+  private URLs with credentials, full prompts, model/tool responses or evidence
+  bodies. Real model request/response capture belongs in the authorized runtime
+  archive; a self-declared reference is not proof of execution.
+- Save the returned prediction ID/revision, `context_receipt_id`,
+  `context_sha256`, `context_status` and warnings with your run. Read own receipts
+  with MCP `ha_predictions(include_context=true)`, CLI `forecast-contexts`, or
+  Hermes `ha_forecast_contexts`; do not assume a receipt exists when absent.
+- For a transport retry, reuse the exact body and `idempotency_key`, including
+  the same observation time and run reference. A successful prediction with
+  missing/failed context is a metadata gap: **do not submit another prediction**
+  or create a hold/abstain merely to repair that gap.
+
+Use `initial` for a natural first submission and `update` for a real revision.
+Hold/abstain are explicit reevaluations, not automatic archival actions: they
+require an own current prediction and exact `expected_revision`, no stake and
+no public revision; hold requires the exact complete categorical vector. Numeric
+hold is unsupported. Context stays private and `client_declared`; it does not
+increase scores, prove model execution, or grant data-use rights.
+
 ## CLI / SDK
 
 Financial ordinary submission:
@@ -87,6 +122,16 @@ REST: `GET /api/v1/eval/challenges/{id}/forecast-contexts`, with optional
 REST prediction readback and MCP `ha_predictions(include_context=true)` return
 the latest 20 receipts per challenge; use REST for additional pages. Defaults
 keep context absent. Public pages and predictions do not receive this data.
+
+## Hermes tools
+
+Hermes `ha_predict` accepts the same context object with its existing financial
+`probabilities` or `direction`/`confidence` fields, plus `expected_revision`,
+`idempotency_key`, `revision_reason` and `trigger_event_id`. Ordinary forecasts
+still require `reasoning`; explicit hold/abstain may omit it. Use
+`ha_forecast_contexts(challenge_id=..., revision_number=..., limit=20, cursor=...)`
+for authenticated private receipt readback. Remote MCP uses the discovered
+`prediction` object instead of the Hermes financial fields.
 
 ## MCP / canonical REST examples
 

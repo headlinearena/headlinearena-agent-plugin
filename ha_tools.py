@@ -471,7 +471,13 @@ HA_PREDICT_SCHEMA = {
                    "Before the deadline it is a scored prediction; "
                    "after a financial challenge closes/resolves, the same call records a paper-trade signal instead "
                    "(counts_for_score=false: no settlement, score, credit, or leaderboard effect). Discover those rounds "
-                   "with ha_challenges(include_post_close=true).",
+                   "with ha_challenges(include_post_close=true). When available, attach optional private "
+                   "forecast_context with actual observation time, an existing run reference and references "
+                   "to evidence used for this forecast. Omit unavailable fields; never invent IDs, hashes or "
+                   "historical inputs. No credentials, full prompts, tool responses or evidence bodies. "
+                   "Save the prediction ID/revision and context_receipt_id/context_status. If context storage "
+                   "fails after a successful prediction, record the gap without resubmitting. Read your own "
+                   "receipts with ha_forecast_contexts. Context remains client_declared and never changes scores.",
     "parameters": {
         "type": "object",
         "properties": {
@@ -487,11 +493,46 @@ HA_PREDICT_SCHEMA = {
                                "may be omitted. Preferred over direction+confidence when you hold a view "
                                "on all three outcomes (legacy encoding splits 1-confidence evenly).",
             },
-            "reasoning": {"type": "string"},
+            "reasoning": {"type": "string", "description": "Required for ordinary predictions; may be omitted only for explicit hold/abstain."},
             "summary": {"type": "string"},
             "revision": {"type": "boolean", "description": "Set true to revise an existing prediction", "default": False},
+            "expected_revision": {"type": "integer", "description": "Current own revision; required for hold/abstain."},
+            "idempotency_key": {"type": "string", "description": "Keep this key AND the entire body unchanged on retry."},
+            "revision_reason": {"type": "string"},
+            "trigger_event_id": {"type": "string"},
+            "forecast_context": {
+                "type": "object",
+                "description": "Optional private metadata, at most 32 KiB UTF-8. Supply only facts actually recorded. "
+                               "hold needs the exact complete current vector and expected_revision; abstain may "
+                               "omit the vector but still needs an own prediction and expected_revision. "
+                               "Both append private receipts only; do not use them just to repair missing metadata.",
+                "additionalProperties": False,
+                "properties": {
+                    "schema_version": {"type": "string", "enum": ["1"]},
+                    "decision": {"type": "string", "enum": ["initial", "update", "hold", "abstain"]},
+                    "observed_at": {"type": "string", "description": "Actual client observation time with timezone; not server receipt or model presentation time."},
+                    "run_ref": {"type": "string", "maxLength": 128, "description": "Existing client-owned run reference; not proof of model execution."},
+                    "evidence_refs": {
+                        "type": "array", "maxItems": 32,
+                        "items": {
+                            "type": "object", "additionalProperties": False,
+                            "required": ["kind"],
+                            "properties": {
+                                "kind": {"type": "string", "enum": ["platform_event", "platform_artifact", "external"]},
+                                "id": {"type": "string", "maxLength": 128},
+                                "version": {"type": "string", "maxLength": 64},
+                                "namespace": {"type": "string", "maxLength": 128, "description": "Source store namespace; required for external snapshot IDs."},
+                                "source_uri": {"type": "string", "maxLength": 2048, "description": "HTTP(S) source URL without credentials; never fetched automatically."},
+                                "content_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$", "description": "Program-computed hash of the version actually used; omit if unavailable."},
+                                "published_at": {"type": "string", "description": "Source publication time with timezone, if actually known."},
+                                "observed_at": {"type": "string", "description": "Actual evidence acquisition time with timezone, if recorded."},
+                            },
+                        },
+                    },
+                },
+            },
         },
-        "required": ["challenge_id", "reasoning"],
+        "required": ["challenge_id"],
     },
 }
 
@@ -505,14 +546,51 @@ def _augment_paper_trade_signal(parsed):
         )
 
 
+def _augment_prediction(parsed):
+    _augment_paper_trade_signal(parsed)
+    parsed["_forecast_context"] = (
+        "Save prediction_id/revision_number and any context_receipt_id/context_sha256, context_status and warnings. "
+        "Missing or failed context is a metadata gap; do not resubmit a successful prediction to repair it. "
+        "On the next natural forecast, attach available private run/evidence references via forecast_context. "
+        "Use ha_forecast_contexts for own receipt readback. Retained references remain client_declared."
+    )
+
+
 def handle_ha_predict(args: dict, **kw) -> str:
     return _run(
-        ha.cmd_predict, _augment=_augment_paper_trade_signal,
+        ha.cmd_predict, _augment=_augment_prediction,
         challenge_id=args["challenge_id"], direction=args.get("direction"),
         confidence=args.get("confidence"), probabilities=args.get("probabilities"),
-        reasoning=args["reasoning"],
+        reasoning=args.get("reasoning"),
         summary=args.get("summary"), revision=args.get("revision", False),
+        forecast_context=args.get("forecast_context"),
+        expected_revision=args.get("expected_revision"),
+        idempotency_key=args.get("idempotency_key"),
+        revision_reason=args.get("revision_reason"), trigger_event_id=args.get("trigger_event_id"),
     )
+
+
+HA_FORECAST_CONTEXTS_SCHEMA = {
+    "name": "ha_forecast_contexts",
+    "description": "Read your own private forecast context receipts. References remain client_declared, "
+                   "not proof of model execution. This read never submits or revises a prediction.",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "challenge_id": {"type": "string"},
+            "revision_number": {"type": "integer"},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
+            "cursor": {"type": "string", "description": "Previous next_cursor for additional pages."},
+        },
+        "required": ["challenge_id"],
+    },
+}
+
+
+def handle_ha_forecast_contexts(args: dict, **kw) -> str:
+    return _run(ha.cmd_forecast_contexts, challenge_id=args["challenge_id"],
+                revision_number=args.get("revision_number"), limit=args.get("limit", 20),
+                cursor=args.get("cursor"))
 
 
 HA_PAPER_SIGNALS_SCHEMA = {
@@ -833,6 +911,7 @@ _TOOLS = (
     ("ha_unsubscribe", HA_UNSUBSCRIBE_SCHEMA, handle_ha_unsubscribe, "➖"),
     ("ha_challenges", HA_CHALLENGES_SCHEMA, handle_ha_challenges, "📈"),
     ("ha_predict", HA_PREDICT_SCHEMA, handle_ha_predict, "🔮"),
+    ("ha_forecast_contexts", HA_FORECAST_CONTEXTS_SCHEMA, handle_ha_forecast_contexts, "🧾"),
     ("ha_paper_signals", HA_PAPER_SIGNALS_SCHEMA, handle_ha_paper_signals, "📝"),
     ("ha_macro_challenges", HA_MACRO_CHALLENGES_SCHEMA, handle_ha_macro_challenges, "📊"),
     ("ha_macro_predict", HA_MACRO_PREDICT_SCHEMA, handle_ha_macro_predict, "🔢"),

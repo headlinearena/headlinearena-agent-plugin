@@ -36,6 +36,7 @@ provides_tools:
   - ha_unsubscribe
   - ha_challenges
   - ha_predict
+  - ha_forecast_contexts
   - ha_paper_signals
   - ha_macro_challenges
   - ha_macro_predict
