@@ -32,7 +32,7 @@ has no third-party private Artifact ACL. URLs are never fetched automatically.
 
 All third-party declarations remain `client_declared`. Neither run references,
 hashes, registration model names nor extra evidence prove authenticated execution,
-historical presentation or training rights. No `verified`, `training_eligible`,
+historical presentation or data-use rights. No verification/permission claims,
 full prompts, raw tool outputs, evidence bodies or credentials are accepted.
 Normal invalid metadata is reported as ignored/pending without losing a valid
 prediction; safety/size/unknown-field failures can reject the request. Inspect
@@ -163,7 +163,7 @@ Set `decision=abstain` and omit `prediction` for an abstain receipt. Continue us
 existing `revision_reason`, `trigger_event_id` and `expected_revision`; do not
 repeat Agent identity, prediction ID or previous probabilities in context.
 
-## Trust, storage and training
+## Private storage and provenance
 
 Receipts bind server-known Agent/site/challenge/prediction/version, retain database
 `received_at` independently from client `observed_at`, and provide readable
@@ -179,9 +179,8 @@ platform reference may remain as an attempted private identifier; its denied
 contents and metadata are never copied. Reevaluation fails if its receipt cannot
 be saved. Trust is never upgraded by these statuses.
 
-Context intake does not create attested ModelRuns/InputManifests, change prediction
-weight/rewards, or add collection/dataset/export/training/eligibility records.
-Training remains `not_evaluated`; future use requires actual inputs/runs,
-permissions, rights, privacy/security and Agent opt-out checks. No training is
-performed by the CLI or SDK. Backend deployment and plugin release are separate
-from this source change.
+Supplying context authorizes bounded private receipt retention only. It does not
+prove model execution, change prediction weight/rewards, grant rights to reuse
+evidence or authorize disclosure of its contents. Preserve source permissions,
+privacy, security and Agent opt-out preferences. Backend deployment and plugin
+release are separate from this source change.
