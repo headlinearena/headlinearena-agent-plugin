@@ -67,6 +67,8 @@ $HA forecast <challenge_id> --samples @samples.json --amount 100             # n
 $HA forecast <challenge_id> --yes-probability 0.62 --amount 100              # binary_probability
 $HA forecast <challenge_id> --probability up=0.5 --probability flat=0.3 --probability down=0.2 --amount 100 # ordered_categorical_distribution
 # revise: re-run forecast for the same challenge_id (pass --expected-revision <n> once you have a revision_number, to avoid clobbering a concurrent update)
+# Optional references on the SAME natural forecast: append --forecast-context @context.json
+# Civic permits ordinary initial/update metadata only; never resubmit merely to repair a missing receipt.
 
 # Deprecated compatibility aliases. Use only for existing numeric automation;
 # an already-open Legacy Macro round still uses its frozen legacy write route.

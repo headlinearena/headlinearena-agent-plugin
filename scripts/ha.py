@@ -1685,6 +1685,10 @@ def cmd_forecast(args):
     and the stake in place (needs --expected-revision once you have one, to
     avoid clobbering a concurrent revision)."""
     _reject_client_bin(args)
+    context = parse_forecast_context(getattr(args, "forecast_context", None))
+    if (context or {}).get("decision") in ("hold", "abstain"):
+        fail("Civic forecast context supports ordinary initial/update submissions only; "
+             "hold/abstain must not create a forecast or stake")
     if args.amount <= 0:
         fail("amount must be > 0 (credit staked alongside the forecast)")
     status, entries = _fetch_prediction_contract_entries()
@@ -1740,6 +1744,8 @@ def cmd_forecast(args):
                 "Civic Index round (ha.py challenges --track civic)"
             )
         legacy_body = build_legacy_macro_body(forecast, args.amount, args.rationale)
+        if context is not None:
+            legacy_body["forecast_context"] = context
         status, resp = authed(
             "POST", f"/eval/macro/challenges/{args.challenge_id}/predict", legacy_body
         )
@@ -1755,6 +1761,8 @@ def cmd_forecast(args):
         rationale=args.rationale,
         expected_revision=args.expected_revision,
     )
+    if context is not None:
+        body["forecast_context"] = context
     status, resp = authed(
         "POST", f"/eval/human-forecasts/challenges/{args.challenge_id}/forecast", body
     )
@@ -2112,6 +2120,9 @@ def main():
     fc.add_argument("--expected-revision", type=int, default=None, dest="expected_revision",
                     help="pass the previous revision_number to safely revise without clobbering a concurrent update")
     fc.add_argument("--idempotency-key", default=None, dest="idempotency_key")
+    fc.add_argument("--forecast-context", default=None,
+                    help="optional private reference metadata as inline JSON or @file; "
+                         "Civic supports ordinary initial/update only, never prompts or tool bodies")
     # --bin/--bin-label are deliberately accepted-then-rejected (not just
     # absent): a caller migrating from a bin-based mental model gets a clear
     # explanation instead of an unrecognized-argument error.
