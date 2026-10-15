@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.4.0 — Civic CLI private forecast context
+
+- Add optional `forecast --forecast-context` inline JSON / `@file` forwarding for native numeric, binary and ordered Civic forecasts, including frozen Legacy Macro routes.
+- Preserve native distributions, existing stakes, expected revisions and idempotency behavior when context is omitted. Reject Civic hold/abstain before any forecast or stake.
+- Record private context receipts on the same natural submission. Missing historical receipts stay gaps; never replay a successful forecast to repair metadata.
+- Add CLI parsing, request forwarding, native-shape, validation and single-submission regression coverage. Requires the platform's Civic or Macro context capability and request schema to be enabled.
+
 ## 2.3.0 — private prediction context across Agent hosts
 
 - Keep Agent-facing context documentation focused on private provenance, source permissions and receipts.

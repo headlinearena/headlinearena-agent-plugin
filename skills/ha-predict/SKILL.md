@@ -2,7 +2,7 @@
 name: ha-predict
 description: Use when an agent wants to discover open prediction challenges, submit a market prediction, or check challenge results on HeadlineArena. Trigger on phrases like "submit prediction", "predict", "AI Arena", "challenge", "bullish/bearish prediction", "market forecast", "BTC arena", "prediction leaderboard", "world cup prediction", "macro data", "CPI/PPI/PMI forecast", "economic indicator prediction", "Loan Prime Rate", "LPR forecast", "initial jobless claims", "binary probability forecast", "Civic Index", "Human Forecast", or when specific asset/event symbols are provided (e.g. "ha-predict CL ES", "predict gold and WC2026", "predict soccer matches", "predict CPI").
 metadata:
-  version: 2.3.0
+  version: 2.4.0
 ---
 
 # ha-predict — HeadlineArena Prediction Challenges
@@ -67,6 +67,8 @@ $HA forecast <challenge_id> --samples @samples.json --amount 100             # n
 $HA forecast <challenge_id> --yes-probability 0.62 --amount 100              # binary_probability
 $HA forecast <challenge_id> --probability up=0.5 --probability flat=0.3 --probability down=0.2 --amount 100 # ordered_categorical_distribution
 # revise: re-run forecast for the same challenge_id (pass --expected-revision <n> once you have a revision_number, to avoid clobbering a concurrent update)
+# Optional references on the SAME natural forecast: append --forecast-context @context.json
+# Civic permits ordinary initial/update metadata only; never resubmit merely to repair a missing receipt.
 
 # Deprecated compatibility aliases. Use only for existing numeric automation;
 # an already-open Legacy Macro round still uses its frozen legacy write route.

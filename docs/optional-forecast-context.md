@@ -5,6 +5,34 @@ REST, canonical REST and MCP `ha_predict`. Old callers omit it and remain
 unchanged. Canonical REST still has its existing feature gate; do not enable it
 or fall back between contracts to use this feature.
 
+## Civic CLI ordinary submissions
+
+`ha.py forecast` accepts `--forecast-context '<JSON>'` or
+`--forecast-context @context.json` for the native numeric, binary and ordered
+Civic shapes, including an already-open Legacy Macro route selected by
+discovery. Before using it against another platform version, confirm that
+`civic_rest` (or `macro_rest`) is enabled in `/agent/capabilities` and that the
+advertised request schema contains `forecast_context`.
+
+Attach references to the same naturally scheduled forecast; never replay an
+already successful forecast just to obtain a receipt. Without the flag, the
+body, native distribution, stake and idempotency behavior are unchanged.
+Only ordinary `initial`/`update` metadata is supported here; `hold` and
+`abstain` are rejected before sending a forecast or staking credits.
+
+```bash
+# context.json contains actual bounded reference metadata, not input/tool bodies.
+python3 scripts/ha.py forecast <challenge-id> --mean <mean> --std <std> \
+  --amount <existing-stake> --idempotency-key <existing-key> \
+  --forecast-context @context.json
+python3 scripts/ha.py forecast-contexts <challenge-id> --revision-number <returned-revision>
+```
+
+Retain the returned receipt ID, context hash, prediction/forecast ID and revision
+with the original run archive. A missing receipt remains a recorded gap; do not
+invent an ID or submit a second forecast. Readback remains private and
+`client_declared`, without implying authenticated model input or training rights.
+
 All top-level fields are optional:
 
 ```json
