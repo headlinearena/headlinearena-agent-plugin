@@ -15,6 +15,8 @@ two derivations must never be unified).
 import re
 import uuid
 
+from ha_client.prediction import model_attribution_fields
+
 NON_NUMERIC_SHAPE_MESSAGE = (
     "This challenge is not numeric — macro-predict only supports "
     "outcome_shape=numeric_distribution (mean/std). Use "
@@ -65,11 +67,14 @@ def quoted_scope_key(detail):
 
 
 def build_macro_civic_fallback_body(challenge_id, predicted_value, predicted_std,
-                                    amount, rationale=None):
+                                    amount, rationale=None,
+                                    model_provider=None, model_name=None, model_version=None):
     """The Human-Forecast retry body macro-predict uses when the legacy route
     404s. Derivation is the historical one — value:std:amount, NOT the
     canonical forecast-JSON form — and must stay that way: the server's
-    idempotency dedup keys on it."""
+    idempotency dedup keys on it. Declared model fields ride along without
+    joining the key (the server keeps them in the request fingerprint, so a
+    same-key different-model retry conflicts loudly instead of deduping)."""
     body = {
         "forecast": {"mean": predicted_value, "std": predicted_std},
         "amount": amount,
@@ -80,4 +85,5 @@ def build_macro_civic_fallback_body(challenge_id, predicted_value, predicted_std
     }
     if rationale:
         body["rationale"] = rationale
+    body.update(model_attribution_fields(model_provider, model_name, model_version))
     return body

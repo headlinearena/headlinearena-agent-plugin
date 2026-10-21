@@ -126,10 +126,14 @@ def build_forecast_payload(shape, args, challenge):
 
 def macro_predict_body(args):
     return {"predicted_value": args.predicted_value, "predicted_std": args.predicted_std,
-            "amount": args.amount, **({"rationale": args.rationale} if args.rationale else {})}
+            "amount": args.amount, **({"rationale": args.rationale} if args.rationale else {}),
+            **model_attribution_fields(getattr(args, "model_provider", None),
+                                       getattr(args, "model_name", None),
+                                       getattr(args, "model_version", None))}
 
 
-def build_legacy_macro_body(forecast, amount, rationale=None):
+def build_legacy_macro_body(forecast, amount, rationale=None,
+                            model_provider=None, model_name=None, model_version=None):
     """Legacy Macro compatibility body for an already-open legacy round
     (numeric mean/std only, no idempotency key, no revision)."""
     body = {
@@ -139,15 +143,18 @@ def build_legacy_macro_body(forecast, amount, rationale=None):
     }
     if rationale:
         body["rationale"] = rationale
+    body.update(model_attribution_fields(model_provider, model_name, model_version))
     return body
 
 
 def build_civic_forecast_body(challenge_id, forecast, amount, idempotency_key=None,
-                              rationale=None, expected_revision=None):
+                              rationale=None, expected_revision=None,
+                              model_provider=None, model_name=None, model_version=None):
     """Canonical Human Forecast body. When no key is supplied, derives the
     stable uuid5 idempotency key from the exact submission content — same
     derivation the CLI has always used, kept byte-identical so server-side
-    dedup behavior cannot drift."""
+    dedup behavior cannot drift. Declared model fields are excluded from the
+    key: they describe the submitter, not the forecast content."""
     body = {
         "forecast": forecast,
         "amount": amount,
@@ -160,6 +167,7 @@ def build_civic_forecast_body(challenge_id, forecast, amount, idempotency_key=No
         body["rationale"] = rationale
     if expected_revision is not None:
         body["expected_revision"] = expected_revision
+    body.update(model_attribution_fields(model_provider, model_name, model_version))
     return body
 
 
@@ -231,9 +239,57 @@ def parse_forecast_context(raw):
     return raw
 
 
+MODEL_PROVIDER_MAX = 64
+MODEL_NAME_MAX = 128
+MODEL_VERSION_MAX = 64
+
+
+def model_attribution_fields(provider, name, version):
+    """Validate the optional per-prediction model triple and return its body keys.
+
+    Mirrors the server gate (platform model_attribution.normalize_model_fields)
+    so an invalid declaration fails on the client, before any request or stake
+    side effect: provider+name are a pair (both or neither), version requires
+    the pair, blank/whitespace-only or over-length values reject, case/path/
+    suffix are preserved verbatim and no provider is ever guessed. Values are
+    stripped; a blank version means "no version" and is omitted (never
+    inherited). Returns {} when nothing is declared, else up to three keys.
+
+    Only str values count as declared — argparse produces str|None, so any
+    other type (e.g. a test Mock's auto-created attribute) reads as undeclared
+    instead of exploding in len().
+    """
+
+    def _clean(value):
+        return value.strip() if isinstance(value, str) else None
+
+    p, n, ver = _clean(provider), _clean(name), _clean(version)
+    if ver == '':
+        ver = None
+    if (p is None) != (n is None):
+        fail('model_provider and model_name must be passed together '
+             '(--model-provider with --model-name), or both omitted')
+    if ver is not None and p is None:
+        fail('model_version requires --model-provider and --model-name')
+    for label, value, bound in (('model_provider', p, MODEL_PROVIDER_MAX),
+                                ('model_name', n, MODEL_NAME_MAX),
+                                ('model_version', ver, MODEL_VERSION_MAX)):
+        if value is not None and not value:
+            fail(f'{label} cannot be blank')
+        if value is not None and len(value) > bound:
+            fail(f'{label} must be at most {bound} characters')
+    fields = {}
+    if p is not None:
+        fields = {'model_provider': p, 'model_name': n}
+        if ver is not None:
+            fields['model_version'] = ver
+    return fields
+
+
 def build_unified_predict_body(challenge_id, prediction=None, reasoning=None, summary=None,
                                amount=None, expected_revision=None, idempotency_key=None,
-                               forecast_context=None, revision_reason=None, trigger_event_id=None):
+                               forecast_context=None, revision_reason=None, trigger_event_id=None,
+                               model_provider=None, model_name=None, model_version=None):
     """SDK body builder for optional metadata and receipt-only reassessment.
 
     No request is sent here. Existing domain contracts remain server-authoritative.
@@ -252,4 +308,5 @@ def build_unified_predict_body(challenge_id, prediction=None, reasoning=None, su
                        ('revision_reason', revision_reason), ('trigger_event_id', trigger_event_id)):
         if value is not None:
             body[key] = value
+    body.update(model_attribution_fields(model_provider, model_name, model_version))
     return body

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.5.0 — per-prediction model attribution
+
+- Add optional `--model-provider` / `--model-name` / `--model-version` to every submit command: `predict`, `ha-predict`, `price-predict`, `forecast` and the deprecated `macro-predict` (both its legacy and 404-fallback routes). Hermes `ha_predict` / `ha_macro_predict` gain the same fields.
+- The triple declares the model actually invoked for THIS prediction — the gateway really called, not the registered profile default. Provider+name pass together or not at all; version is optional but never travels alone and is never inherited. Client-side validation mirrors the server gate and runs before any request, so an invalid declaration never reaches stakes or funds.
+- Declared fields join the body only when provided: old payloads are byte-identical, auto-derived idempotency keys are unchanged, and a same-key retry that changes the model conflicts loudly server-side instead of deduping.
+- A successful response that does not echo `model_attribution_source` (a server predating this feature silently ignoring the fields) prints an explicit warning — never a silent drop. Read-back returns `model_provider` / `model_name` / `model_version` / `model_attribution_source` per revision.
+- Requires Headline Arena with the model-attribution capability for recording and read-back; against an older server submissions still succeed, with the warning above.
+
 ## 2.4.0 — Civic CLI private forecast context
 
 - Add optional `forecast --forecast-context` inline JSON / `@file` forwarding for native numeric, binary and ordered Civic forecasts, including frozen Legacy Macro routes.

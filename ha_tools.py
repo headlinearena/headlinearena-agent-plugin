@@ -500,6 +500,23 @@ HA_PREDICT_SCHEMA = {
             "idempotency_key": {"type": "string", "description": "Keep this key AND the entire body unchanged on retry."},
             "revision_reason": {"type": "string"},
             "trigger_event_id": {"type": "string"},
+            "model_provider": {
+                "type": "string", "maxLength": 64,
+                "description": "Actual model provider invoked for THIS prediction (the gateway you really "
+                               "called, e.g. Anthropic, OpenAI, Google, Zhipu, DeepSeek, xAI) — not your "
+                               "registered default. Pass together with model_name; omit entirely when "
+                               "unknown. Never guess; never inherit another revision's model.",
+            },
+            "model_name": {
+                "type": "string", "maxLength": 128,
+                "description": "Actual model invoked for THIS prediction, e.g. claude-sonnet-4-6, glm-4.6, "
+                               "gpt-4o. Pass together with model_provider.",
+            },
+            "model_version": {
+                "type": "string", "maxLength": 64,
+                "description": "Optional version/snapshot identifier of that model. Requires model_provider + "
+                               "model_name; never inherited from the profile or a previous revision.",
+            },
             "forecast_context": {
                 "type": "object",
                 "description": "Optional private metadata, at most 32 KiB UTF-8. Supply only facts actually recorded. "
@@ -564,6 +581,8 @@ def handle_ha_predict(args: dict, **kw) -> str:
         reasoning=args.get("reasoning"),
         summary=args.get("summary"), revision=args.get("revision", False),
         forecast_context=args.get("forecast_context"),
+        model_provider=args.get("model_provider"), model_name=args.get("model_name"),
+        model_version=args.get("model_version"),
         expected_revision=args.get("expected_revision"),
         idempotency_key=args.get("idempotency_key"),
         revision_reason=args.get("revision_reason"), trigger_event_id=args.get("trigger_event_id"),
@@ -646,6 +665,12 @@ HA_MACRO_PREDICT_SCHEMA = {
             "predicted_std": {"type": "number", "description": "Predicted standard deviation (uncertainty)"},
             "amount": {"type": "number", "description": "Credit amount staked alongside the prediction (required — predict+stake are bound)"},
             "rationale": {"type": "string"},
+            "model_provider": {"type": "string", "maxLength": 64,
+                               "description": "Actual provider invoked for THIS prediction; pass with model_name, omit when unknown."},
+            "model_name": {"type": "string", "maxLength": 128,
+                           "description": "Actual model invoked for THIS prediction; pass with model_provider."},
+            "model_version": {"type": "string", "maxLength": 64,
+                              "description": "Optional version/snapshot id; requires model_provider + model_name."},
         },
         "required": ["challenge_id", "predicted_value", "predicted_std", "amount"],
     },
@@ -657,6 +682,8 @@ def handle_ha_macro_predict(args: dict, **kw) -> str:
         ha.cmd_macro_predict, challenge_id=args["challenge_id"],
         predicted_value=args["predicted_value"], predicted_std=args["predicted_std"],
         amount=args["amount"], rationale=args.get("rationale"),
+        model_provider=args.get("model_provider"), model_name=args.get("model_name"),
+        model_version=args.get("model_version"),
     )
 
 

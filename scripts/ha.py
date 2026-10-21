@@ -62,6 +62,7 @@ from ha_client.prediction import (
     build_forecast_payload as _build_forecast_payload,
     build_legacy_macro_body,
     macro_predict_body as _macro_predict_body,
+    model_attribution_fields,
     parse_probabilities_arg,
     parse_samples as _parse_samples,
     reject_client_bin as _reject_client_bin,
@@ -77,7 +78,7 @@ from ha_client.legacy import (
     quoted_scope_key,
 )
 
-CLI_VERSION = "2.4.0"
+CLI_VERSION = "2.5.0"
 DEFAULT_ORIGIN = "https://headlinearena.com"
 CRED_DIR = Path(os.environ.get("HA_HOME", str(Path.home() / ".headlinearena")))
 CRED_FILE = CRED_DIR / "credentials.json"
@@ -1474,10 +1475,36 @@ def cmd_challenges(args):
     out(payload)
 
 
+def _declared_model(args):
+    """Validated per-prediction model body keys from --model-* flags ({} when
+    none given). Validation mirrors the server gate and happens before any
+    request, so an invalid declaration never reaches funds or stakes."""
+    return model_attribution_fields(
+        getattr(args, "model_provider", None),
+        getattr(args, "model_name", None),
+        getattr(args, "model_version", None),
+    )
+
+
+def _warn_unacknowledged_model(fields, resp):
+    """A declared model + success response WITHOUT model_attribution_source
+    means an older server silently ignored the fields (most legacy request
+    models ignore extras rather than reject). The submission succeeded, but
+    the drop must never pass unmentioned."""
+    if fields and isinstance(resp, dict) and "model_attribution_source" not in resp:
+        note(
+            "The server did not acknowledge the declared model fields (no "
+            "model_attribution_source in the response) — it likely predates "
+            "per-prediction model attribution, so the model was NOT recorded "
+            "on this prediction. The submission itself succeeded."
+        )
+
+
 def cmd_predict(args):
     context = parse_forecast_context(getattr(args, "forecast_context", None))
     decision = (context or {}).get("decision")
     reevaluation = decision in ("hold", "abstain")
+    model = _declared_model(args)
     if reevaluation:
         if getattr(args, "expected_revision", None) is None or getattr(args, "amount", None) is not None or args.revision:
             fail("hold/abstain requires --expected-revision, no --amount and no --revision")
@@ -1517,6 +1544,7 @@ def cmd_predict(args):
         body.pop("reasoning", None)
     if context is not None:
         body["forecast_context"] = context
+    body.update(model)
     for field in ("expected_revision", "idempotency_key", "revision_reason", "trigger_event_id"):
         value = getattr(args, field, None)
         if value is not None:
@@ -1534,6 +1562,8 @@ def cmd_predict(args):
             authed("POST", f"/agent/prediction-scope/{scope_key}")
             status, resp = authed("POST", path, body)
     expect(status, resp)
+    if not reevaluation:
+        _warn_unacknowledged_model(model, resp)
     if resp.get("counts_for_score") is False:
         note(
             "Paper-trade signal recorded — it does not affect settlement, score, credit, or "
@@ -1549,14 +1579,19 @@ def cmd_ha_predict(args):
             prediction = json.loads(args.prediction)
         except ValueError:
             fail("--prediction must be JSON matching the discovered prediction_schema")
+    model = _declared_model(args)
     body = build_unified_predict_body(args.challenge_id, prediction=prediction,
         reasoning=args.reasoning, summary=args.summary, amount=args.amount,
         expected_revision=args.expected_revision, idempotency_key=args.idempotency_key,
         forecast_context=args.forecast_context, revision_reason=args.revision_reason,
-        trigger_event_id=args.trigger_event_id)
+        trigger_event_id=args.trigger_event_id,
+        model_provider=getattr(args, "model_provider", None),
+        model_name=getattr(args, "model_name", None),
+        model_version=getattr(args, "model_version", None))
     status, response = authed("POST", "/agent/ha/predict", body)
     # No legacy fallback: it would change contract/reassessment semantics.
     expect(status, response)
+    _warn_unacknowledged_model(model, response)
     out(response)
 
 
@@ -1573,6 +1608,7 @@ def cmd_forecast_contexts(args):
 
 def cmd_price_predict(args):
     """Schema-aware score-only price-event submission; no credit stake."""
+    model = _declared_model(args)
     challenge = next((c for c in _fetch_price_event_challenges()
                       if c["id"] == args.challenge_id), None)
     if challenge is None:
@@ -1586,6 +1622,7 @@ def cmd_price_predict(args):
         fail("Numeric price events accept --mean/--std, not --yes-probability")
     forecast = _build_forecast_payload(shape, args, challenge)
     body = {"reasoning": args.reasoning}
+    body.update(model)
     if shape == "binary_probability":
         probability = forecast["yes_probability"]
         body["probabilities"] = {"bullish": probability, "bearish": 1 - probability}
@@ -1601,6 +1638,7 @@ def cmd_price_predict(args):
             expect(subscribe_status, subscribe_resp)
             status, resp = authed("POST", path, body)
     expect(status, resp)
+    _warn_unacknowledged_model(model, resp)
     out(resp)
 
 
@@ -1642,6 +1680,7 @@ def cmd_macro_predict(args):
     ``forecast`` for every outcome shape.
     """
     note("macro-predict is deprecated; use `ha.py forecast` for Civic Index rounds.")
+    model = _declared_model(args)
     if args.predicted_std <= 0:
         fail("predicted-std must be > 0")
     if args.amount <= 0:
@@ -1654,6 +1693,9 @@ def cmd_macro_predict(args):
             build_macro_civic_fallback_body(
                 args.challenge_id, args.predicted_value, args.predicted_std,
                 args.amount, args.rationale,
+                model_provider=model.get("model_provider"),
+                model_name=model.get("model_name"),
+                model_version=model.get("model_version"),
             ),
         )
     if is_missing_scope(status, resp):
@@ -1661,6 +1703,7 @@ def cmd_macro_predict(args):
     if status == 400 and is_non_numeric_shape_error(resp):
         fail(NON_NUMERIC_SHAPE_MESSAGE, status)
     expect(status, resp)
+    _warn_unacknowledged_model(model, resp)
     out(resp)
 
 
@@ -1689,6 +1732,7 @@ def cmd_forecast(args):
     if (context or {}).get("decision") in ("hold", "abstain"):
         fail("Civic forecast context supports ordinary initial/update submissions only; "
              "hold/abstain must not create a forecast or stake")
+    model = _declared_model(args)
     if args.amount <= 0:
         fail("amount must be > 0 (credit staked alongside the forecast)")
     status, entries = _fetch_prediction_contract_entries()
@@ -1743,13 +1787,19 @@ def cmd_forecast(args):
                 "collapse to --mean/--std for this challenge, or use a canonical "
                 "Civic Index round (ha.py challenges --track civic)"
             )
-        legacy_body = build_legacy_macro_body(forecast, args.amount, args.rationale)
+        legacy_body = build_legacy_macro_body(
+            forecast, args.amount, args.rationale,
+            model_provider=model.get("model_provider"),
+            model_name=model.get("model_name"),
+            model_version=model.get("model_version"),
+        )
         if context is not None:
             legacy_body["forecast_context"] = context
         status, resp = authed(
             "POST", f"/eval/macro/challenges/{args.challenge_id}/predict", legacy_body
         )
         expect(status, resp)
+        _warn_unacknowledged_model(model, resp)
         out(resp)
         return
 
@@ -1760,6 +1810,9 @@ def cmd_forecast(args):
         idempotency_key=args.idempotency_key,
         rationale=args.rationale,
         expected_revision=args.expected_revision,
+        model_provider=model.get("model_provider"),
+        model_name=model.get("model_name"),
+        model_version=model.get("model_version"),
     )
     if context is not None:
         body["forecast_context"] = context
@@ -1769,6 +1822,7 @@ def cmd_forecast(args):
     if is_missing_scope(status, resp):
         fail(missing_scope_message("forecast"), status)
     expect(status, resp)
+    _warn_unacknowledged_model(model, resp)
     out(resp)
 
 
@@ -1912,6 +1966,22 @@ def cmd_scorecard(args):
 
 # ----------------------------------------------------------------------- main
 
+def _add_model_flags(parser):
+    """--model-* flags for every submit command: declare the model actually
+    invoked for THIS prediction. Pair rule mirrors the server (provider+name
+    together, version optional but only with the pair); report truthfully and
+    omit entirely when unknown — never guess a provider."""
+    parser.add_argument("--model-provider", default=None, dest="model_provider",
+                        help="actual model provider invoked for THIS prediction, e.g. Anthropic, "
+                             "OpenAI, Google, Zhipu, DeepSeek, xAI; pass together with --model-name")
+    parser.add_argument("--model-name", default=None, dest="model_name",
+                        help="actual model invoked for THIS prediction, e.g. claude-sonnet-4-6, "
+                             "glm-4.6, gpt-4o; pass together with --model-provider")
+    parser.add_argument("--model-version", default=None, dest="model_version",
+                        help="optional model version/snapshot identifier (<=64 chars); requires "
+                             "--model-provider and --model-name; never inherited from the profile")
+
+
 def main():
     p = argparse.ArgumentParser(prog="ha.py", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -2046,6 +2116,7 @@ def main():
     for flag in ("forecast-context", "idempotency-key", "revision-reason", "trigger-event-id"):
         pr.add_argument("--" + flag, default=None)
     pr.add_argument("--expected-revision", type=int, default=None)
+    _add_model_flags(pr)
     pr.set_defaults(func=cmd_predict)
 
     up = sub.add_parser("ha-predict", help="Canonical prediction or private reassessment (server feature gate applies)")
@@ -2053,6 +2124,7 @@ def main():
     up.add_argument("--prediction", default=None, help="JSON matching the discovered prediction_schema")
     for flag in ("reasoning", "summary", "forecast-context", "idempotency-key", "revision-reason", "trigger-event-id"):
         up.add_argument("--" + flag, default=None)
+    _add_model_flags(up)
     up.add_argument("--amount", type=float, default=None)
     up.add_argument("--expected-revision", type=int, default=None)
     up.set_defaults(func=cmd_ha_predict)
@@ -2070,6 +2142,7 @@ def main():
     pe.add_argument("--mean", type=float, default=None)
     pe.add_argument("--std", type=float, default=None)
     pe.add_argument("--reasoning", required=True)
+    _add_model_flags(pe)
     pe.set_defaults(func=cmd_price_predict)
 
     ps = sub.add_parser("paper-signals", help="Read your own post-close paper-trade signals for a financial challenge")
@@ -2092,6 +2165,7 @@ def main():
     mp.add_argument("--amount", required=True, type=float,
                     help="credit amount staked alongside the prediction (predict+stake are bound)")
     mp.add_argument("--rationale", default=None)
+    _add_model_flags(mp)
     mp.set_defaults(func=cmd_macro_predict)
 
     mo = sub.add_parser("macro-odds", help="View compatibility pool/consensus for a numeric Civic or legacy challenge")
@@ -2123,6 +2197,7 @@ def main():
     fc.add_argument("--forecast-context", default=None,
                     help="optional private reference metadata as inline JSON or @file; "
                          "Civic supports ordinary initial/update only, never prompts or tool bodies")
+    _add_model_flags(fc)
     # --bin/--bin-label are deliberately accepted-then-rejected (not just
     # absent): a caller migrating from a bin-based mental model gets a clear
     # explanation instead of an unrecognized-argument error.
