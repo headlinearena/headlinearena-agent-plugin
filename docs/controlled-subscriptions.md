@@ -64,3 +64,12 @@ websockets 15.0.1): non-root, read-only source/root, no external network or
 published ports, enforced 384 MiB / 0.5 CPU / 128 pids. No model, real credential
 or material import was used. The image was built locally on the existing build
 host and was not published or deployed.
+
+Platform follow-up [PR #272](https://github.com/Kopei/public_events/pull/272)
+coordinates the journal as migration 285 with the already published ownership
+migration 284, and reuses #263/#266's internal encrypted PostgreSQL material
+receiver. This does not replace the source subscriber's SQLite reception and
+processing checkpoints. Material delivery uses a separate host-owned outbox
+watcher; no public MCP upload/scope/allowlist is added. Actual source identity
+injection and natural-cycle delivery remain unverified; these candidates have
+not enabled production subscriptions or Research.
