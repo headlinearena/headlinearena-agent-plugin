@@ -25,7 +25,8 @@ before complete can run that work again. This is at-least-once, never exactly-on
 An inbox-only command does not claim that research has processed the messages.
 
 The default is 1000 pending events, 20 MiB canonical JSON content and 256 KiB per
-event. Completed rows may be compacted; pending rows are never dropped. Disk,
+event. Only a contiguous completed prefix may be compacted; completion beyond
+a pending event remains durable across restart. Pending rows are never dropped. Disk,
 WAL and retained run material require host quotas/monitoring. Capacity and old
 backlog are health alerts. Queue consumption, alert delivery and material rights
 remain the operator's responsibilities.
@@ -50,3 +51,9 @@ Recovery records the old/new cursors and reason without deleting pending inputs.
 It does not manufacture missing history or declare that an Agent saw old inputs.
 No automatic reset or fallback exists. The corresponding platform API/journal
 must pass staging acceptance before a production host uses this candidate.
+
+2026-10-23 follow-up: the complete `test_ha_*.py` suite passed 265 tests on
+Python 3.11, including real loopback HTTP reconnect/resume, process-crash
+SQLite recovery, completion-prefix compaction across restart, and an actual
+bounded CLI subprocess returning failure on a server cursor-expired gap.
+This is local engineering verification, not hosted MCP or production acceptance.

@@ -114,9 +114,12 @@ class Inbox:
                 if pos[1] <= prior[1]:
                     raise Gap('out_of_order_or_unknown_duplicate')
             pending, total = self.db.execute('SELECT count(CASE WHEN processed_at IS NULL THEN 1 END),coalesce(sum(length(body)),0) FROM inbox').fetchone()
-            # Completed rows may be compacted, pending rows are never evicted.
+            # Only the completed prefix may be compacted. A completed row
+            # beyond a pending row still proves contiguous completion later.
             if total+len(body) > self.max_bytes:
-                self.db.execute('DELETE FROM inbox WHERE processed_at IS NOT NULL')
+                self.db.execute('''DELETE FROM inbox WHERE processed_at IS NOT NULL
+                    AND id < coalesce((SELECT min(id) FROM inbox WHERE processed_at IS NULL),
+                                      (SELECT coalesce(max(id),0)+1 FROM inbox))''')
                 total = self.db.execute('SELECT coalesce(sum(length(body)),0) FROM inbox').fetchone()[0]
             if pending >= self.max_pending or total+len(body) > self.max_bytes:
                 raise Capacity('durable_queue_capacity')

@@ -1,6 +1,7 @@
 """Real local HTTP, SQLite and process-crash recovery; no platform credentials."""
 import io
 import json
+import os
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from pathlib import Path
 import subprocess
@@ -59,6 +60,20 @@ class SubscriptionTests(unittest.TestCase):
             box.receive(self.cursor(2),{'id':'two'})
         self.assertEqual(box.get('persisted_cursor'),self.cursor(1))
         self.assertIn('backlog_age',box.health()['alerts'])
+        box.close()
+
+    def test_compaction_retains_completion_beyond_a_pending_event(self):
+        box=Inbox(self.root,'fixture',max_bytes=1024)
+        for n in range(1,4):
+            box.receive(self.cursor(n),{'id':str(n),'body':'x'*240})
+        box.complete([1,3])
+        box.receive(self.cursor(4),{'id':'4','body':'x'*240})
+        self.assertEqual(box.db.execute('SELECT id FROM inbox ORDER BY id').fetchall(),[(2,),(3,),(4,)])
+        box.close()
+        box=Inbox(self.root,'fixture',max_bytes=1024)
+        box.complete([2])
+        self.assertEqual(box.get('processed_cursor'),self.cursor(3))
+        self.assertEqual([r['cursor'] for r in box.pending()],[self.cursor(4)])
         box.close()
 
     def test_process_crash_after_commit_recovers_pending_bytes(self):
@@ -133,6 +148,30 @@ os._exit(7)
         self.assertEqual(box.db.execute('SELECT count(*) FROM gap_decisions').fetchone()[0],1)
         self.assertIsNone(box.get('processed_cursor'))
         box.close()
+
+    def test_real_bounded_cli_reports_expired_cursor_without_success(self):
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self,*_):
+                pass
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header('Content-Type','text/event-stream')
+                self.end_headers()
+                self.wfile.write(b'event: gap\ndata: {"code":"cursor_expired"}\n\n')
+        server=ThreadingHTTPServer(('127.0.0.1',0),Handler)
+        thread=threading.Thread(target=server.serve_forever,daemon=True)
+        thread.start()
+        try:
+            result=subprocess.run([sys.executable,str(Path(__file__).parent/'ha.py'),
+                'news-stream','--max-events','1','--timeout','3'],
+                env=dict(os.environ,HA_BASE_URL=f'http://127.0.0.1:{server.server_port}'),
+                capture_output=True,text=True,timeout=10)
+            self.assertNotEqual(result.returncode,0)
+            self.assertIn('cursor_expired',result.stdout+result.stderr)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(5)
 
     def test_gap_is_fatal_and_oversized_frame_rejected(self):
         stop=threading.Event()
