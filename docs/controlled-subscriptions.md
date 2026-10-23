@@ -57,3 +57,10 @@ Python 3.11, including real loopback HTTP reconnect/resume, process-crash
 SQLite recovery, completion-prefix compaction across restart, and an actual
 bounded CLI subprocess returning failure on a server cursor-expired gap.
 This is local engineering verification, not hosted MCP or production acceptance.
+
+The same runtime source (`4c65ec2`) also passed its 10 subscription and 8 market
+client tests inside the event_agents `611fac4` image (Python 3.11.17 /
+websockets 15.0.1): non-root, read-only source/root, no external network or
+published ports, enforced 384 MiB / 0.5 CPU / 128 pids. No model, real credential
+or material import was used. The image was built locally on the existing build
+host and was not published or deployed.
