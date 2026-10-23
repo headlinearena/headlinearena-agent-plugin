@@ -1,0 +1,75 @@
+# Resident news subscriber (development candidate, not published)
+
+`news-stream --max-events 20 --timeout 60` remains bounded. MCP stays bounded.
+Only the host-owned CLI below runs continuously, after explicit material
+retention approval. It does not call models, submit forecasts or upload bodies.
+
+```sh
+python3 scripts/ha.py news-watch --state-dir "$NEWS_PERSISTENT_DIR" --allow-retention
+python3 scripts/ha.py news-health --state-dir "$NEWS_PERSISTENT_DIR"
+```
+
+The API base stays controlled by the existing CLI configuration. The inbox is
+bound to the exact source URL. Never reuse another tenant/host's state directory.
+Use a host supervisor such as the event_agents candidate's isolated Compose
+stack to start, stop, restart and health-check processes. This command itself
+is not installed as a background service. SIGTERM/SIGINT cancel within the
+current 30-second network read timeout.
+
+SQLite FULL synchronous + WAL commits the event and persisted cursor together.
+A network `received` report precedes durable `persisted`. Processing is separate:
+`Inbox.pending()` returns ordered events; a handler calls `Inbox.complete(ids)`
+only after durable work succeeds. Its processed cursor advances only across a
+contiguous completed prefix. Handlers must be idempotent; a crash after work but
+before complete can run that work again. This is at-least-once, never exactly-once.
+An inbox-only command does not claim that research has processed the messages.
+
+The default is 1000 pending events, 20 MiB canonical JSON content and 256 KiB per
+event. Only a contiguous completed prefix may be compacted; completion beyond
+a pending event remains durable across restart. Pending rows are never dropped. Disk,
+WAL and retained run material require host quotas/monitoring. Capacity and old
+backlog are health alerts. Queue consumption, alert delivery and material rights
+remain the operator's responsibilities.
+
+Reconnects use Last-Event-ID from the persisted cursor, with 1–60 second
+exponential backoff and jitter. Versions are deduplicated by cursor; an updated
+headline with the same event ID remains a new item. Conflicting duplicates,
+unknown older cursors, epoch changes, invalid streams, permission denials and
+server gap frames fail closed. Bounded `news-stream` also raises on a gap.
+
+New server journal cursors use `n1:epoch:sequence`. Legacy cursors cannot prove
+intermediate-version continuity. Initial windows and pre-journal history have
+explicit gaps. `stream_metadata` retains the latest ready frame. Stop the host
+and inspect existing pending material before explicitly accepting a gap:
+
+```sh
+python3 scripts/ha.py news-recover --state-dir "$NEWS_PERSISTENT_DIR" \
+  --cursor "$REVIEWED_SERVER_CHECKPOINT" --reason "$GAP_DECISION" --accept-gap
+```
+
+Recovery records the old/new cursors and reason without deleting pending inputs.
+It does not manufacture missing history or declare that an Agent saw old inputs.
+No automatic reset or fallback exists. The corresponding platform API/journal
+must pass staging acceptance before a production host uses this candidate.
+
+2026-10-23 follow-up: the complete `test_ha_*.py` suite passed 265 tests on
+Python 3.11, including real loopback HTTP reconnect/resume, process-crash
+SQLite recovery, completion-prefix compaction across restart, and an actual
+bounded CLI subprocess returning failure on a server cursor-expired gap.
+This is local engineering verification, not hosted MCP or production acceptance.
+
+The same runtime source (`4c65ec2`) also passed its 10 subscription and 8 market
+client tests inside the event_agents `611fac4` image (Python 3.11.17 /
+websockets 15.0.1): non-root, read-only source/root, no external network or
+published ports, enforced 384 MiB / 0.5 CPU / 128 pids. No model, real credential
+or material import was used. The image was built locally on the existing build
+host and was not published or deployed.
+
+Platform follow-up [PR #272](https://github.com/Kopei/public_events/pull/272)
+coordinates the journal as migration 285 with the already published ownership
+migration 284, and reuses #263/#266's internal encrypted PostgreSQL material
+receiver. This does not replace the source subscriber's SQLite reception and
+processing checkpoints. Material delivery uses a separate host-owned outbox
+watcher; no public MCP upload/scope/allowlist is added. Actual source identity
+injection and natural-cycle delivery remain unverified; these candidates have
+not enabled production subscriptions or Research.

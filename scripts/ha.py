@@ -1867,6 +1867,45 @@ def cmd_market_context(args):
     out(result)
 
 
+def cmd_news_watch(args):
+    from ha_client.subscription import run_watch
+    if not args.allow_retention:
+        fail("news-watch requires explicit --allow-retention for this host and news material")
+    raise SystemExit(run_watch(args.state_dir, api("/events/stream"),
+                               max_pending=args.max_pending,max_bytes=args.max_bytes))
+
+
+def cmd_news_recover(args):
+    from ha_client.subscription import Inbox, recover_cursor
+    from pathlib import Path
+    import fcntl
+    if not args.accept_gap:
+        fail("Explicit --accept-gap required; pending inputs are preserved")
+    root = Path(args.state_dir)
+    lock_path = root / ".subscriber.lock"
+    if lock_path.is_symlink():
+        fail("Unsafe subscriber lock")
+    with lock_path.open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        inbox = Inbox(root, api("/events/stream"))
+        try:
+            out(recover_cursor(inbox, args.cursor, args.reason))
+        finally:
+            inbox.close()
+
+
+def cmd_news_health(args):
+    from ha_client.subscription import Inbox
+    inbox = Inbox(args.state_dir, api("/events/stream"))
+    try:
+        health = inbox.health(args.max_age)
+        out(health)
+        if not health["healthy"]:
+            raise SystemExit(2)
+    finally:
+        inbox.close()
+
+
 def cmd_news_stream(args):
     """Bounded NDJSON stream; carry each resume cursor back to the caller."""
     if args.max_events < 1 or args.timeout <= 0:
@@ -2232,6 +2271,23 @@ def main():
     stream.add_argument("--max-events", type=int, default=20)
     stream.add_argument("--timeout", type=float, default=60)
     stream.set_defaults(func=cmd_news_stream)
+
+    watch = sub.add_parser("news-watch", help="Opt-in resident news subscriber with a durable local inbox")
+    watch.add_argument("--state-dir", required=True)
+    watch.add_argument("--allow-retention", action="store_true")
+    watch.add_argument("--max-pending", type=int, default=1000)
+    watch.add_argument("--max-bytes", type=int, default=20971520)
+    watch.set_defaults(func=cmd_news_watch)
+    recover = sub.add_parser("news-recover", help="Explicitly accept a declared gap and resume from a chosen checkpoint")
+    recover.add_argument("--state-dir", required=True)
+    recover.add_argument("--cursor", required=True)
+    recover.add_argument("--reason", required=True)
+    recover.add_argument("--accept-gap", action="store_true")
+    recover.set_defaults(func=cmd_news_recover)
+    health = sub.add_parser("news-health", help="Check subscriber heartbeat and durable backlog")
+    health.add_argument("--state-dir", required=True)
+    health.add_argument("--max-age", type=int, default=120)
+    health.set_defaults(func=cmd_news_health)
 
     ev = sub.add_parser("events", help="List market events (public)")
     ev.add_argument("--today", action="store_true")

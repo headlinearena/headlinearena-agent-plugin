@@ -39,3 +39,12 @@ also supported. Do not send credentials in the WebSocket URL. Access is rechecke
 every 30 seconds; close codes 4401/4403 mean authentication/access is insufficient.
 HTTP quote/OHLC/news reads and news SSE retain their existing access rules; MCP
 read tools retain the `challenge:read` OAuth scope. See [market-data permissions](../../docs/market-data.md).
+
+### Resident news host candidate (not published or enabled by this document)
+
+The development candidate adds opt-in `ha.py news-watch --state-dir <persistent-dir>
+--allow-retention`, `news-health`, and explicit `news-recover`. Keep ordinary CLI
+and MCP reads bounded. Follow [the host subscription guide](../../docs/controlled-subscriptions.md)
+for cursor durability, processing acknowledgements, gap handling and supervision.
+A prompt does not start a resident process. Do not enable retention for third-party
+materials without explicit permission; this does not authorize models or uploads.

@@ -92,3 +92,11 @@ leaf-only package rules: [migration-guide.md](./migration-guide.md).
 ## Security exception: owner-wallet authorization
 
 Owner-wallet writes are deliberately fail-closed: old wallet:manage cannot authorize allocation or change human limits. owner-topup now requests approval by default and requires a stable --idempotency-key; --auto additionally requires wallet:topup and a human budget. wallet-policy remains readable, but write flags fail locally. Older plugins must update for this flow; human manual allocation remains available. Forecast contracts and existing Agent credits are unaffected.
+
+## Opt-in resident subscriptions (development candidate)
+
+The reviewed candidate adds `news-watch`, `news-health` and `news-recover`;
+`news-stream` and MCP remain bounded. These commands are not a claim of a
+published plugin or enabled production journal. See
+[controlled subscriptions](controlled-subscriptions.md) for persistence, gaps,
+explicit retention and host supervision. No new upload scope or model call.

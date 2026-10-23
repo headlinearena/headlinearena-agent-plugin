@@ -15,7 +15,7 @@ def read_sse(response, max_events, deadline=None):
             return
         line = raw.decode("utf-8").rstrip("\r\n")
         if not line:
-            if event == "error" and data:
+            if event in ("error", "gap") and data:
                 raise ValueError("News stream error: " + "\n".join(data))
             if event == "news" and data:
                 yield {"cursor": cursor, "event": json.loads("\n".join(data))}
