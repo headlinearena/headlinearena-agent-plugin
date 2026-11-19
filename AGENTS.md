@@ -2,6 +2,16 @@
 
 Guidelines for Codex CLI and other AI agents working in this repository.
 
+## Working preferences
+
+- **Explain plainly by default.** Lead with an explanation a newcomer can follow and go deeper if asked. In day-to-day collaboration, use the terms the user and sources use; keep technical detail when it makes the explanation more precise. Use active voice, group related details, and introduce the context the reader needs before referring to it.
+- **Write for the intended audience.** When drafting something for others on the user's behalf, give those readers the background and reasoning they need. When editing or reviewing an existing draft, preserve the author's meaning and wording except where changes were requested.
+- **Work toward a verified result.** Take the next authorized step within scope instead of ending with a plan, a routine question, or instructions the user would have to execute. State material assumptions and decisions. Pause the affected step only for a significant scope change, a concrete blocker, a decision reserved for the user, or an irreversible or destructive action that needs confirmation.
+- **Write correct, readable code.** Fulfill and verify the requested behavior. Reuse existing logic, types, classes, methods, data representations, and APIs when they preserve correctness. When consolidating or removing code, keep the behavior its callers rely on unless the task requires a change. Prefer clear names, branches, and useful comments over minified formatting or dense one-liners. Avoid unnecessary helpers, abstraction, and indirection. Reuse existing checks by default; add tests when the user or repository requires them, or when existing tests would miss a specific regression.
+- **Make frontend content useful.** For webpage or app illustrations, generally prefer realistic ImageGen or image-search assets that fit the project. Use SVG illustrations when the user specifically requests them; preserve existing icon systems and functional graphics. Include copy only when it informs, guides an action or navigation, or fulfills an explicit content request. Remove decorative numbering, filler badges, redundant headings, and repetitive explanations; keep necessary labels, instructions, status feedback, and accessibility.
+
+These preferences do not override repository-specific safety, validation, contribution, or release requirements.
+
 ## Repository Overview
 
 This repository contains Agent Skills for the HeadlineArena platform.
